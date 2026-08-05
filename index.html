@@ -1,0 +1,758 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Balance</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Balance">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<style>
+:root{
+  --bg:#F6F5F1; --surface:#FFFFFF; --surface2:#EFEEE8; --ink:#191C1A; --muted:#6C716D;
+  --border:rgba(20,24,20,.12); --border-strong:rgba(20,24,20,.22);
+  --teal:#0A8878; --indigo:#3848C0; --coral:#C83818; --gold:#B07800;
+  --accent:var(--teal); --over:#C4432B; --ok:#0A8878;
+  --ring-track:#E4E2DA; --shadow:0 1px 3px rgba(20,24,20,.07);
+  --serif:ui-serif,"New York",Georgia,serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#131512; --surface:#1C1F1C; --surface2:#252825; --ink:#F0EFE9; --muted:#9AA09B;
+    --border:rgba(240,239,233,.14); --border-strong:rgba(240,239,233,.26);
+    --teal:#2FB39E; --indigo:#8A96EE; --coral:#E8724F; --gold:#D9A032;
+    --over:#E8724F; --ok:#2FB39E; --ring-track:#2C302C; --shadow:none;
+  }
+}
+*{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+html{font-size:16px;}
+body{
+  font-family:var(--sans); background:var(--bg); color:var(--ink);
+  min-height:100dvh; padding-bottom:calc(76px + env(safe-area-inset-bottom));
+}
+body[data-view="today"]{--accent:var(--teal);}
+body[data-view="trends"]{--accent:var(--indigo);}
+body[data-view="foods"]{--accent:var(--coral);}
+body[data-view="settings"]{--accent:var(--gold);}
+#wrap{max-width:480px; margin:0 auto; padding:0 16px;}
+header{
+  display:flex; align-items:baseline; justify-content:space-between;
+  padding:calc(14px + env(safe-area-inset-top)) 2px 10px;
+}
+header h1{font-family:var(--serif); font-size:22px; font-weight:600; color:var(--accent); letter-spacing:.2px;}
+#syncdot{font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px;}
+#syncdot::before{content:""; width:8px; height:8px; border-radius:50%; background:var(--dot,#9AA09B); display:inline-block;}
+#syncdot.ok{--dot:var(--ok);} #syncdot.pending{--dot:var(--gold);} #syncdot.err{--dot:var(--over);}
+.card{background:var(--surface); border:0.5px solid var(--border); border-radius:14px;
+  padding:14px 16px; margin-bottom:12px; box-shadow:var(--shadow);}
+.card h3{font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:8px;}
+.row{display:flex; align-items:center; gap:10px;}
+.spread{justify-content:space-between;}
+.num{font-family:var(--serif); font-variant-numeric:tabular-nums;}
+.big{font-size:34px; font-weight:600;}
+.mid{font-size:20px; font-weight:600;}
+.sub{font-size:12.5px; color:var(--muted); line-height:1.45;}
+button{font-family:var(--sans); font-size:15px; color:var(--ink); background:var(--surface);
+  border:0.5px solid var(--border-strong); border-radius:10px; padding:9px 14px; cursor:pointer;}
+button:active{transform:scale(.97);}
+button.primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600;}
+button.ghost{border-color:transparent; background:transparent; color:var(--accent); font-weight:600;}
+button.danger{color:var(--over);}
+button:disabled{opacity:.45;}
+input,select,textarea{font-family:var(--sans); font-size:16px; color:var(--ink);
+  background:var(--surface2); border:0.5px solid var(--border); border-radius:10px; padding:10px 12px; width:100%;}
+input:focus,textarea:focus{outline:2px solid var(--accent); outline-offset:-1px;}
+label{font-size:12.5px; color:var(--muted); display:block; margin:10px 0 4px;}
+/* ring */
+#ringbox{display:flex; flex-direction:column; align-items:center; padding:6px 0 2px;}
+#ringbox svg text{font-family:var(--serif);}
+/* protein bar */
+.pbar{height:6px; border-radius:3px; background:var(--ring-track); overflow:hidden; margin-top:6px;}
+.pbar>div{height:100%; border-radius:3px; background:var(--accent);}
+/* chips */
+#chips{display:flex; gap:8px; overflow-x:auto; padding:2px 0 10px; scrollbar-width:none;}
+#chips::-webkit-scrollbar{display:none;}
+.chip{flex:0 0 auto; font-size:13.5px; padding:8px 12px; border-radius:999px;
+  background:var(--surface); border:0.5px solid var(--border-strong); white-space:nowrap;}
+/* entries */
+.entry{display:flex; justify-content:space-between; align-items:baseline; padding:9px 2px;
+  border-bottom:0.5px solid var(--border); gap:8px;}
+.entry:last-child{border-bottom:none;}
+.entry .n{font-size:15px;} .entry .t{font-size:11.5px; color:var(--muted); margin-right:8px;}
+.entry .k{font-family:var(--serif); font-variant-numeric:tabular-nums; font-size:15px; font-weight:600;}
+.entry .p{font-size:11.5px; color:var(--muted);}
+/* parse box */
+#parserow{display:flex; gap:8px; margin-bottom:10px;}
+#parserow textarea{resize:none; height:78px; font-size:16px;}
+/* tab bar */
+nav{position:fixed; bottom:0; left:0; right:0; background:var(--surface);
+  border-top:0.5px solid var(--border); display:flex; justify-content:space-around;
+  padding:8px 0 calc(8px + env(safe-area-inset-bottom)); z-index:40;}
+nav button{border:none; background:none; display:flex; flex-direction:column; align-items:center;
+  gap:3px; font-size:10.5px; color:var(--muted); padding:2px 14px;}
+nav button svg{width:24px; height:24px; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;}
+nav button.on{color:var(--accent); font-weight:600;}
+/* modal / sheet */
+#overlay{position:fixed; inset:0; background:rgba(10,12,10,.45); z-index:60; display:none;
+  align-items:flex-end; justify-content:center;}
+#overlay.show{display:flex;}
+#sheet{background:var(--bg); width:100%; max-width:480px; max-height:88dvh; overflow-y:auto;
+  border-radius:18px 18px 0 0; padding:18px 16px calc(20px + env(safe-area-inset-bottom));}
+#sheet h2{font-family:var(--serif); font-size:19px; margin-bottom:12px; color:var(--accent);}
+.sheet-item{background:var(--surface); border:0.5px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:8px;}
+.sheet-item .grid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:8px;}
+.sheet-item input{padding:7px 9px; font-size:15px;}
+.srcbadge{font-size:10.5px; padding:2px 7px; border-radius:999px; font-weight:600;}
+.srcbadge.lib{background:color-mix(in srgb,var(--teal) 15%,transparent); color:var(--teal);}
+.srcbadge.ai{background:color-mix(in srgb,var(--indigo) 15%,transparent); color:var(--indigo);}
+/* toast */
+#toast{position:fixed; bottom:calc(86px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%);
+  background:var(--ink); color:var(--bg); font-size:14px; padding:10px 16px; border-radius:999px;
+  z-index:70; display:none; align-items:center; gap:12px; white-space:nowrap; box-shadow:0 4px 16px rgba(0,0,0,.25);}
+#toast button{background:none; border:none; color:inherit; font-weight:700; padding:0; text-decoration:underline;}
+/* charts */
+.chart{width:100%; height:auto; display:block;}
+.chart text{font-family:var(--sans); fill:var(--muted); font-size:9px;}
+.banner{background:color-mix(in srgb,var(--gold) 12%,var(--surface)); border:0.5px solid var(--gold);
+  border-radius:12px; padding:12px 14px; font-size:13.5px; margin-bottom:12px; line-height:1.5;}
+.foodrow{display:flex; align-items:center; gap:10px; padding:10px 2px; border-bottom:0.5px solid var(--border);}
+.foodrow:last-child{border-bottom:none;}
+.foodrow .star{font-size:18px; color:var(--border-strong); background:none; border:none; padding:4px;}
+.foodrow .star.fav{color:var(--gold);}
+.wkrow{display:flex; justify-content:space-between; padding:8px 2px; border-bottom:0.5px solid var(--border); font-size:14px;}
+.wkrow:last-child{border-bottom:none;}
+h4.sec{font-family:var(--serif); font-size:16px; margin:18px 0 8px; color:var(--ink);}
+.kpis{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;}
+.kpi{background:var(--surface); border-radius:12px; border:0.5px solid var(--border); padding:11px 13px;}
+.kpi .v{font-family:var(--serif); font-size:21px; font-weight:600; font-variant-numeric:tabular-nums;}
+.kpi .l{font-size:11px; color:var(--muted); margin-bottom:2px;}
+</style>
+</head>
+<body data-view="today">
+<div id="wrap">
+  <header><h1 id="title">Balance</h1><span id="syncdot">local</span></header>
+  <main id="main"></main>
+</div>
+
+<nav>
+  <button id="tab-today" onclick="go('today')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Today</button>
+  <button id="tab-trends" onclick="go('trends')"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Trends</button>
+  <button id="tab-foods" onclick="go('foods')"><svg viewBox="0 0 24 24"><path d="M5 3v18M5 10c3 0 4-2 4-7M12 3v18M12 3c4 1 4 8 0 9"/><path d="M18 3c2 2 3 5 3 8s-1 4-3 4v6"/></svg>Foods</button>
+  <button id="tab-settings" onclick="go('settings')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>Settings</button>
+</nav>
+
+<div id="overlay" onclick="if(event.target===this)closeSheet()"><div id="sheet"></div></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ───────────────────────── state ───────────────────────── */
+const DEMO = location.search.includes("demo=1");
+const LSKEY = DEMO ? "balance:demo" : "balance:v1";
+const SECKEY = "balance:secrets";
+
+let S = load() || seed();
+let SEC = JSON.parse(localStorage.getItem(SECKEY) || "{}");
+if(!SEC.repo) SEC.repo = "DanielPlochinger/balance-data";
+if(!SEC.model) SEC.model = "claude-opus-5";
+let remoteSha = null, syncTimer = null, view = "today", pendingItems = null;
+
+function load(){ try{ return JSON.parse(localStorage.getItem(LSKEY)); }catch(e){ return null; } }
+function seed(){
+  const s = { v:1,
+    config:{ budget:2000, protein:130, cap:300, floor:1500, goal:null, u:Date.now() },
+    days:{}, foods:[] };
+  if(DEMO) demoSeed(s);
+  return s;
+}
+function persist(){ localStorage.setItem(LSKEY, JSON.stringify(S)); scheduleSync(); }
+function saveSec(){ localStorage.setItem(SECKEY, JSON.stringify(SEC)); }
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function dkey(d){ const x = d||new Date(); return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"); }
+function dayRec(k){ if(!S.days[k]) S.days[k] = { e:[], u:Date.now() }; return S.days[k]; }
+function touch(k){ S.days[k].u = Date.now(); persist(); }
+
+/* ───────────────────────── math ───────────────────────── */
+const cfg = () => S.config;
+const consumed = r => (r.e||[]).reduce((a,x)=>a+x.k,0);
+const protein  = r => (r.e||[]).reduce((a,x)=>a+(x.p||0),0);
+const eff = r => r.cheat ? r.cheat.total : cfg().budget + (r.adj||0);
+const tracked = r => r && r.e && r.e.length > 0;
+
+function bank(){
+  const today = dkey(); let b = 0;
+  for(const k of Object.keys(S.days)){
+    const r = S.days[k];
+    if(r.cheat) b -= r.cheat.bank || 0;
+    if(k >= today || !tracked(r)) continue;
+    const net = eff(r) - consumed(r);
+    b += net >= 0 ? Math.min(net, cfg().cap) : net;
+  }
+  return Math.round(b);
+}
+function streak(){
+  let n = 0; const d = new Date(); d.setDate(d.getDate()-1);
+  for(let i=0;i<400;i++){
+    const r = S.days[dkey(d)];
+    if(tracked(r) && consumed(r) <= eff(r)) { n++; d.setDate(d.getDate()-1); }
+    else break;
+  }
+  const t = S.days[dkey()];
+  if(tracked(t) && consumed(t) <= eff(t)) n++;
+  return n;
+}
+function weekStart(k){ const d = new Date(k+"T12:00"); const wd = (d.getDay()+6)%7; d.setDate(d.getDate()-wd); return dkey(d); }
+function weeklyCloses(){
+  const wk = {};
+  const today = dkey();
+  for(const k of Object.keys(S.days)){
+    const r = S.days[k];
+    if(!tracked(r) || k >= today) continue;
+    const w = weekStart(k);
+    wk[w] = wk[w] || { net:0, days:0 };
+    wk[w].net += eff(r) - consumed(r);
+    wk[w].days++;
+  }
+  return Object.entries(wk).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,8);
+}
+function ema(pairs, a=0.3){
+  let m = null; const out = [];
+  for(const [k,w] of pairs){ m = m===null ? w : a*w + (1-a)*m; out.push([k,m]); }
+  return out;
+}
+function weights(n){
+  const out = []; const d = new Date(); d.setDate(d.getDate()-n+1);
+  for(let i=0;i<n;i++){ const k = dkey(d); const r = S.days[k];
+    if(r && r.w) out.push([k, r.w]); d.setDate(d.getDate()+1); }
+  return out;
+}
+
+/* ───────────────────────── cheat planner ───────────────────────── */
+function planCheat(dateK, total){
+  const B = cfg().budget, extra = Math.max(0, total - B);
+  const avail = Math.max(bank(), 0);
+  const useBank = Math.min(avail, extra);
+  let rem = extra - useBank;
+  const maxCut = B - cfg().floor;
+  if(maxCut <= 0) return { err:"Your floor is at or above your budget — fix in Settings." };
+  const nDays = rem > 0 ? Math.ceil(rem / maxCut) : 0;
+  if(nDays > 14) return { err:`That's ${rem} kcal beyond bank + 14 days of headroom. Lower the total or bank more first.` };
+  const per = nDays ? Math.ceil(rem / nDays) : 0;
+  return { total, useBank, rem, nDays, per };
+}
+function lockCheat(dateK, plan){
+  const r = dayRec(dateK);
+  r.cheat = { total: plan.total, bank: plan.useBank };
+  let rem = plan.rem;
+  const d = new Date(dateK+"T12:00");
+  for(let i=0;i<plan.nDays;i++){
+    d.setDate(d.getDate()+1);
+    const k = dkey(d); const rr = dayRec(k);
+    const cut = Math.min(plan.per, rem);
+    rr.adj = (rr.adj||0) - cut; rr.u = Date.now();
+    rem -= cut;
+  }
+  r.u = Date.now(); persist();
+}
+
+/* ───────────────────────── LLM parse ───────────────────────── */
+async function llmParse(text){
+  if(DEMO) return demoParse(text);
+  if(!SEC.anthropic) throw new Error("No Claude API key yet — add it in Settings.");
+  const lib = S.foods.slice(0,300).map(f=>`${f.i}|${f.n}${f.a&&f.a.length?" ("+f.a.join(", ")+")":""}|per ${f.per==="item"?"item":"100 g"}|${f.k} kcal|${f.p} g protein`).join("\n");
+  const sys = `You convert casual food-diary text (often dictated, possibly German or English) into structured nutrition data.
+Rules:
+- Split the text into individual food items with quantities.
+- The user's saved foods are listed below with an id. If an item clearly matches one, set library_id to that id — the app recomputes kcal/protein from the library, so your numbers are only a fallback.
+- Otherwise estimate kcal and protein yourself using standard nutrition knowledge. kcal and protein_g must be TOTALS for the stated quantity.
+- grams: your best estimate of the total weight in grams for the line (0 if it makes no sense, e.g. a drink counted per cup is fine to estimate in ml→g).
+- unit: short label like "item", "g", "ml", "slice", "cup".
+- Keep names short and singular ("Cappuccino", not "two cappuccinos").
+User's saved foods (id|name|basis|kcal|protein):
+${lib || "(none yet)"}`;
+  const schema = { type:"object", additionalProperties:false, required:["items"], properties:{
+    items:{ type:"array", items:{ type:"object", additionalProperties:false,
+      required:["name","qty","unit","grams","kcal","protein_g","library_id"],
+      properties:{ name:{type:"string"}, qty:{type:"number"}, unit:{type:"string"},
+        grams:{type:"number"}, kcal:{type:"number"}, protein_g:{type:"number"},
+        library_id:{type:"string"} } } } } };
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{ "content-type":"application/json", "x-api-key":SEC.anthropic,
+      "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+    body: JSON.stringify({ model:SEC.model, max_tokens:2500,
+      output_config:{ effort:"low", format:{ type:"json_schema", schema } },
+      system:sys, messages:[{ role:"user", content:text }] })
+  });
+  if(!res.ok){
+    const err = await res.json().catch(()=>({}));
+    throw new Error("Claude API " + res.status + ": " + (err.error && err.error.message || "request failed"));
+  }
+  const msg = await res.json();
+  if(msg.stop_reason === "refusal") throw new Error("Claude declined this request — try rephrasing.");
+  const block = (msg.content||[]).find(b=>b.type==="text");
+  if(!block) throw new Error("Empty response from Claude.");
+  return JSON.parse(block.text).items || [];
+}
+
+function findFood(id){ return S.foods.find(f=>f.i===id); }
+function enrich(items){
+  return items.map(it=>{
+    const f = it.library_id ? findFood(it.library_id) : null;
+    let k = Math.round(it.kcal), p = Math.round(it.protein_g*10)/10, src = "ai";
+    if(f){
+      src = "lib";
+      if(f.per === "item"){ k = Math.round(f.k * it.qty); p = Math.round(f.p * it.qty * 10)/10; }
+      else { const g = it.grams > 0 ? it.grams : (f.g||100) * it.qty;
+             k = Math.round(f.k * g/100); p = Math.round(f.p * g/100 * 10)/10; }
+    }
+    return { name:it.name, qty:it.qty, unit:it.unit, grams:it.grams, k, p, src,
+             save: src==="ai" && !S.foods.some(x=>x.n.toLowerCase()===it.name.toLowerCase()) };
+  });
+}
+
+/* ───────────────────────── sync (GitHub) ───────────────────────── */
+function ghReady(){ return !DEMO && SEC.github && SEC.repo; }
+function ghUrl(){ return `https://api.github.com/repos/${SEC.repo}/contents/state.json`; }
+function ghHeaders(){ return { "Authorization":"Bearer "+SEC.github, "Accept":"application/vnd.github+json" }; }
+function setDot(cls, txt){ const d = document.getElementById("syncdot"); d.className = cls; d.textContent = txt; }
+
+function mergeState(remote){
+  if(!remote) return;
+  if((remote.config?.u||0) > (S.config.u||0)) S.config = remote.config;
+  for(const [k,r] of Object.entries(remote.days||{}))
+    if(!S.days[k] || (r.u||0) > (S.days[k].u||0)) S.days[k] = r;
+  const mine = Object.fromEntries(S.foods.map(f=>[f.i,f]));
+  for(const f of (remote.foods||[]))
+    if(!mine[f.i] || (f.u||0) > (mine[f.i].u||0)) mine[f.i] = f;
+  S.foods = Object.values(mine);
+}
+async function pull(){
+  if(!ghReady()) return;
+  try{
+    setDot("pending","syncing");
+    const res = await fetch(ghUrl()+"?ref=main", { headers: ghHeaders() });
+    if(res.status === 404){ remoteSha = null; setDot("ok","synced"); return; }
+    if(!res.ok) throw new Error("GitHub "+res.status);
+    const j = await res.json();
+    remoteSha = j.sha;
+    mergeState(JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g,""))))));
+    localStorage.setItem(LSKEY, JSON.stringify(S));
+    setDot("ok","synced"); render();
+  }catch(e){ setDot("err","offline"); }
+}
+async function push(retry){
+  if(!ghReady()) { setDot("","local"); return; }
+  try{
+    setDot("pending","syncing");
+    const body = { message:"balance "+new Date().toISOString().slice(0,16),
+      content: btoa(unescape(encodeURIComponent(JSON.stringify(S)))) };
+    if(remoteSha) body.sha = remoteSha;
+    const res = await fetch(ghUrl(), { method:"PUT", headers:ghHeaders(), body:JSON.stringify(body) });
+    if(res.status === 409 || res.status === 422){
+      if(!retry){ await pull(); return push(true); }
+      throw new Error("conflict");
+    }
+    if(!res.ok) throw new Error("GitHub "+res.status);
+    remoteSha = (await res.json()).content.sha;
+    setDot("ok","synced");
+  }catch(e){ setDot("err","sync error"); }
+}
+function scheduleSync(){ if(!ghReady()) return; clearTimeout(syncTimer); syncTimer = setTimeout(()=>push(false), 2500); }
+document.addEventListener("visibilitychange", ()=>{ if(document.hidden && ghReady()){ clearTimeout(syncTimer); push(false); } });
+
+/* ───────────────────────── UI helpers ───────────────────────── */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function go(v){ view = v; document.body.dataset.view = v;
+  for(const t of ["today","trends","foods","settings"]) $("#tab-"+t).classList.toggle("on", t===v);
+  $("#title").textContent = { today:"Balance", trends:"Trends", foods:"Foods", settings:"Settings" }[v];
+  render(); window.scrollTo(0,0); }
+function toast(msg, undo){
+  const t = $("#toast");
+  t.innerHTML = esc(msg) + (undo ? ' <button id="undobtn">Undo</button>' : "");
+  t.style.display = "flex";
+  if(undo) $("#undobtn").onclick = ()=>{ undo(); t.style.display = "none"; render(); };
+  clearTimeout(t._h); t._h = setTimeout(()=>t.style.display="none", 4000);
+}
+function sheet(html){ $("#sheet").innerHTML = html; $("#overlay").classList.add("show"); }
+function closeSheet(){ $("#overlay").classList.remove("show"); pendingItems = null; }
+
+/* ───────────────────────── Today ───────────────────────── */
+function ringSVG(left, frac, over){
+  const R = 66, C = 2*Math.PI*R, off = C*(1-Math.min(Math.max(frac,0),1));
+  const col = over ? "var(--over)" : "var(--accent)";
+  return `<svg width="170" height="170" viewBox="0 0 170 170">
+    <circle cx="85" cy="85" r="${R}" fill="none" stroke="var(--ring-track)" stroke-width="11"/>
+    <circle cx="85" cy="85" r="${R}" fill="none" stroke="${col}" stroke-width="11" stroke-linecap="round"
+      stroke-dasharray="${C}" stroke-dashoffset="${off}" transform="rotate(-90 85 85)"/>
+    <text x="85" y="82" text-anchor="middle" font-size="36" font-weight="600" fill="var(--ink)" class="num">${Math.abs(Math.round(left))}</text>
+    <text x="85" y="104" text-anchor="middle" font-size="12" fill="var(--muted)">${over?"kcal over":"kcal left"}</text>
+  </svg>`;
+}
+function renderToday(){
+  const k = dkey(), r = dayRec(k), B = eff(r), c = consumed(r), pr = protein(r);
+  const left = B - c, over = left < 0, b = bank(), st = streak();
+  const needsSetup = !DEMO && (!SEC.anthropic || !SEC.github);
+  const favs = S.foods.filter(f=>f.fav).slice(0,12);
+  const dateStr = new Date().toLocaleDateString("en-GB",{ weekday:"long", day:"numeric", month:"long" });
+  let h = "";
+  if(needsSetup) h += `<div class="banner"><b>Almost live.</b> Add your Claude API key ${SEC.github?"":"and GitHub token "}in <a href="#" onclick="go('settings');return false" style="color:var(--gold)">Settings</a> to unlock dictation parsing and cloud sync. Manual logging already works.</div>`;
+  h += `<div class="row spread" style="margin-bottom:8px">
+    <span class="sub">${dateStr}${r.cheat?' · <b style="color:var(--gold)">cheat day — locked</b>':""}${r.adj?` · financing ${r.adj} kcal`:""}</span>
+    <span class="sub">🔥 ${st}-day streak</span></div>`;
+  h += `<div class="card"><div id="ringbox">${ringSVG(left, c/B, over)}
+      <div class="sub num">${Math.round(c).toLocaleString()} of ${Math.round(B).toLocaleString()} kcal · protein ${Math.round(pr)} of ${cfg().protein} g</div>
+      <div class="pbar" style="width:70%"><div style="width:${Math.min(100, pr/cfg().protein*100)}%"></div></div>
+    </div></div>`;
+  if(favs.length) h += `<div id="chips">${favs.map(f=>`<button class="chip" onclick="quickLog('${f.i}')">+ ${esc(f.n)} <span class="sub">${f.per==="item"?f.k:f.k+"/100g"}</span></button>`).join("")}</div>`;
+  h += `<div id="parserow"><textarea id="foodtext" placeholder="Dictate or type… e.g. two cappuccinos, one banana, 60 g oats, 3 eggs" enterkeyhint="done"></textarea></div>
+    <div class="row" style="margin-bottom:14px">
+      <button class="primary" style="flex:1" onclick="doParse()">Log with Claude</button>
+      <button onclick="manualSheet()">Manual</button>
+    </div>`;
+  h += `<div class="card"><h3>Logged today · ${r.e.length} item${r.e.length===1?"":"s"}</h3>`;
+  h += r.e.length ? r.e.map(e=>`<div class="entry" onclick="delEntry('${e.i}')">
+      <span><span class="t">${e.t}</span><span class="n">${e.q>1?e.q+"× ":""}${esc(e.n)}</span></span>
+      <span><span class="k">${e.k}</span> <span class="p">kcal · ${e.p} g</span></span></div>`).join("")
+    : `<div class="sub">Nothing yet. Tell me what you ate.</div>`;
+  h += `</div>`;
+  h += `<div class="kpis">
+    <div class="kpi"><div class="l">Calorie bank</div><div class="v" style="color:${b<0?"var(--over)":"var(--gold)"}">${b>=0?"+":""}${b.toLocaleString()}</div><div class="sub">${b<0?"in debt — auto-repaying":"banked from good days"}</div></div>
+    <div class="kpi"><div class="l">Weight today</div>
+      <div class="row"><input id="win" type="number" inputmode="decimal" step="0.1" placeholder="${lastWeight()||"kg"}" value="${r.w||""}" style="width:84px;padding:6px 8px"><button class="ghost" onclick="saveWeight()">Save</button></div></div>
+  </div>`;
+  h += `<button style="width:100%;color:var(--gold);border-color:var(--gold)" onclick="cheatSheet()">🎉 Plan a cheat day${b>0?` — bank covers ${b.toLocaleString()} kcal`:""}</button>`;
+  return h;
+}
+function lastWeight(){ const w = weights(90); return w.length ? w[w.length-1][1] : null; }
+function saveWeight(){ const v = parseFloat($("#win").value); if(!v) return;
+  const r = dayRec(dkey()); r.w = Math.round(v*10)/10; touch(dkey()); toast("Weight saved: "+r.w+" kg"); render(); }
+function quickLog(id){ const f = findFood(id); if(!f) return;
+  addEntries([{ name:f.n, qty:1, k: f.per==="item"?f.k:Math.round(f.k*(f.g||100)/100), p: f.per==="item"?f.p:Math.round(f.p*(f.g||100)/100*10)/10, src:"lib", save:false }]); }
+function addEntries(items){
+  const k = dkey(), r = dayRec(k);
+  const added = items.map(it=>{
+    const e = { i:uid(), t:new Date().toTimeString().slice(0,5), n:it.name, q:it.qty||1, k:Math.round(it.k), p:Math.round((it.p||0)*10)/10 };
+    r.e.push(e); return e.i;
+  });
+  for(const it of items) if(it.save) saveToLibrary(it);
+  touch(k);
+  toast(`Logged ${items.length} item${items.length===1?"":"s"} · ${items.reduce((a,x)=>a+Math.round(x.k),0)} kcal`, ()=>{
+    r.e = r.e.filter(e=>!added.includes(e.i)); touch(k);
+  });
+  render();
+}
+function saveToLibrary(it){
+  if(S.foods.some(f=>f.n.toLowerCase()===it.name.toLowerCase())) return;
+  const perItem = !(it.grams>0) || it.unit==="item" || (it.qty>=1 && it.unit!=="g" && it.unit!=="ml");
+  const f = { i:uid(), n:it.name, a:[], fav:false, u:Date.now() };
+  if(perItem){ f.per="item"; f.k=Math.round(it.k/(it.qty||1)); f.p=Math.round((it.p||0)/(it.qty||1)*10)/10; }
+  else { f.per="100g"; f.k=Math.round(it.k*100/it.grams); f.p=Math.round((it.p||0)*100/it.grams*10)/10; f.g=Math.round(it.grams/(it.qty||1)); }
+  S.foods.push(f); persist();
+}
+function delEntry(id){
+  const r = dayRec(dkey()); const e = r.e.find(x=>x.i===id); if(!e) return;
+  sheet(`<h2>Remove entry?</h2><div class="card"><b>${esc(e.n)}</b> — ${e.k} kcal</div>
+    <div class="row"><button class="danger" style="flex:1" onclick="reallyDel('${id}')">Remove</button>
+    <button style="flex:1" onclick="closeSheet()">Keep</button></div>`);
+}
+function reallyDel(id){ const r = dayRec(dkey()); r.e = r.e.filter(x=>x.i!==id); touch(dkey()); closeSheet(); render(); }
+
+async function doParse(){
+  const text = $("#foodtext").value.trim(); if(!text) return;
+  const btn = document.querySelector("#parserow + .row .primary") || document.activeElement;
+  sheet(`<h2>Parsing…</h2><div class="sub">Claude is reading your meal.</div>`);
+  try{
+    const items = enrich(await llmParse(text));
+    if(!items.length){ sheet(`<h2>Hmm</h2><div class="sub">Couldn't find any food in that. Try again?</div><button style="margin-top:12px;width:100%" onclick="closeSheet()">Close</button>`); return; }
+    pendingItems = items; confirmSheet();
+  }catch(e){
+    sheet(`<h2>Parse failed</h2><div class="sub">${esc(e.message)}</div><button style="margin-top:12px;width:100%" onclick="closeSheet()">Close</button>`);
+  }
+}
+function confirmSheet(){
+  const items = pendingItems;
+  const tot = items.reduce((a,x)=>a+Math.round(x.k),0);
+  const totP = Math.round(items.reduce((a,x)=>a+(x.p||0),0));
+  sheet(`<h2>Confirm · ${tot} kcal · ${totP} g protein</h2>
+    ${items.map((it,i)=>`<div class="sheet-item">
+      <div class="row spread"><b>${esc(it.name)}</b>
+        <span><span class="srcbadge ${it.src}">${it.src==="lib"?"your food":"Claude est."}</span>
+        <button class="ghost danger" style="padding:2px 6px" onclick="pendingItems.splice(${i},1);confirmSheet()">✕</button></span></div>
+      <div class="grid">
+        <span><label>Qty</label><input type="number" inputmode="decimal" value="${it.qty}" onchange="pi(${i},'qty',this.value)"></span>
+        <span><label>kcal</label><input type="number" inputmode="numeric" value="${Math.round(it.k)}" onchange="pi(${i},'k',this.value)"></span>
+        <span><label>Protein g</label><input type="number" inputmode="decimal" value="${it.p}" onchange="pi(${i},'p',this.value)"></span>
+      </div>
+      ${it.src==="ai"?`<label style="margin-top:8px"><input type="checkbox" style="width:auto;margin-right:6px" ${it.save?"checked":""} onchange="pendingItems[${i}].save=this.checked"> Save to my foods</label>`:""}
+    </div>`).join("")}
+    <div class="row" style="margin-top:12px">
+      <button class="primary" style="flex:1" onclick="logPending()">Log ${items.length} item${items.length===1?"":"s"}</button>
+      <button onclick="closeSheet()">Cancel</button></div>`);
+}
+function pi(i, field, val){ pendingItems[i][field] = parseFloat(val)||0; }
+function logPending(){ const it = pendingItems; closeSheet(); addEntries(it); }
+function manualSheet(){
+  sheet(`<h2>Manual entry</h2>
+    <label>Name</label><input id="mn" placeholder="Cappuccino">
+    <div class="row"><span style="flex:1"><label>kcal (total)</label><input id="mk" type="number" inputmode="numeric"></span>
+    <span style="flex:1"><label>Protein g</label><input id="mp" type="number" inputmode="decimal"></span></div>
+    <label style="margin-top:10px"><input id="ms" type="checkbox" style="width:auto;margin-right:6px" checked> Save to my foods</label>
+    <div class="row" style="margin-top:14px"><button class="primary" style="flex:1" onclick="manualLog()">Log</button>
+    <button onclick="closeSheet()">Cancel</button></div>`);
+}
+function manualLog(){
+  const n = $("#mn").value.trim(), k = parseFloat($("#mk").value), p = parseFloat($("#mp").value)||0;
+  if(!n || !k) return;
+  const save = $("#ms").checked; closeSheet();
+  addEntries([{ name:n, qty:1, k, p, unit:"item", grams:0, src:"ai", save }]);
+}
+
+/* ───────────────────────── cheat sheet ───────────────────────── */
+function cheatSheet(){
+  const d = new Date(); const dow = d.getDay(); const toSat = (6-dow+7)%7 || 7;
+  d.setDate(d.getDate()+toSat);
+  sheet(`<h2>Plan a cheat day</h2>
+    <div class="sub" style="margin-bottom:10px">Pick the day and how many calories it gets. The bank pays first; whatever's left is financed by trimming the following days — never below ${cfg().floor} kcal. Once locked, it's locked.</div>
+    <label>Date</label><input id="cd" type="date" value="${dkey(d)}" min="${dkey()}">
+    <label>Total calories that day</label><input id="ct" type="number" inputmode="numeric" value="3500" onchange="cheatPreview()" onkeyup="cheatPreview()">
+    <div class="card" id="cprev" style="margin-top:12px"></div>
+    <div class="row"><button class="primary" style="flex:1" onclick="cheatLock()">Lock it in</button>
+    <button onclick="closeSheet()">Cancel</button></div>`);
+  cheatPreview();
+}
+function cheatPreview(){
+  const t = parseInt($("#ct").value)||0; const p = planCheat($("#cd").value, t);
+  $("#cprev").innerHTML = p.err ? `<span style="color:var(--over)">${esc(p.err)}</span>` :
+    `<h3>The financing</h3>
+     <div class="sub" style="font-size:13.5px">
+     Budget that day: <b>${t.toLocaleString()} kcal</b><br>
+     ${p.useBank?`🏦 Bank pays <b>${p.useBank.toLocaleString()} kcal</b><br>`:""}
+     ${p.nDays?`📉 Next ${p.nDays} day${p.nDays===1?"":"s"} trimmed by <b>−${p.per} kcal</b> each`:p.useBank?"Fully covered by your bank. Nice.":"Within your normal budget."}
+     </div>`;
+  window._cheatPlan = p.err ? null : p;
+}
+function cheatLock(){
+  if(!window._cheatPlan) return;
+  const dk = $("#cd").value; lockCheat(dk, window._cheatPlan);
+  closeSheet(); toast("Cheat day locked for "+dk+" 🎉"); render();
+}
+
+/* ───────────────────────── Trends ───────────────────────── */
+function chartWeight(n){
+  const pts = weights(n); if(pts.length < 2) return `<div class="sub">Log your weight a few mornings and the trend appears here.</div>`;
+  const sm = ema(pts);
+  const W = 340, H = 150, P = 24;
+  const ys = pts.map(p=>p[1]).concat(cfg().goal?[cfg().goal]:[]);
+  let lo = Math.min(...ys), hi = Math.max(...ys); const pad = Math.max((hi-lo)*0.15, 0.4); lo-=pad; hi+=pad;
+  const X = i => P + i*(W-P-8)/(pts.length-1);
+  const Y = v => H-16 - (v-lo)*(H-28)/(hi-lo);
+  const line = sm.map((p,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(p[1]).toFixed(1)).join(" ");
+  const goal = cfg().goal ? `<line x1="${P}" x2="${W-8}" y1="${Y(cfg().goal)}" y2="${Y(cfg().goal)}" stroke="var(--gold)" stroke-dasharray="4 4" stroke-width="1"/><text x="${W-10}" y="${Y(cfg().goal)-4}" text-anchor="end" fill="var(--gold)">goal ${cfg().goal}</text>` : "";
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">
+    <line x1="${P}" x2="${W-8}" y1="${H-16}" y2="${H-16}" stroke="var(--border)" />
+    ${goal}
+    ${pts.map((p,i)=>`<circle cx="${X(i)}" cy="${Y(p[1])}" r="2.4" fill="var(--muted)" opacity="0.5"><title>${p[0]}: ${p[1]} kg</title></circle>`).join("")}
+    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="${X(pts.length-1)}" cy="${Y(sm[sm.length-1][1])}" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>
+    <text x="${P}" y="10">${hi.toFixed(1)}</text><text x="${P}" y="${H-4}">${lo.toFixed(1)}</text>
+    <text x="${W-8}" y="10" text-anchor="end" fill="var(--ink)" font-weight="600">${sm[sm.length-1][1].toFixed(1)} kg trend</text>
+  </svg>`;
+}
+function chartCals(n){
+  const days = []; const d = new Date(); d.setDate(d.getDate()-n+1);
+  for(let i=0;i<n;i++){ const k = dkey(d); days.push([k, S.days[k]]); d.setDate(d.getDate()+1); }
+  const W = 340, H = 130, P = 6, bw = (W-2*P)/n - 3;
+  const B = cfg().budget;
+  const maxV = Math.max(B*1.3, ...days.map(([k,r])=>r?consumed(r):0));
+  const Y = v => H-18 - v*(H-34)/maxV;
+  let bars = "";
+  days.forEach(([k,r],i)=>{
+    if(!tracked(r)) return;
+    const c = consumed(r), e = eff(r), x = P + i*((W-2*P)/n);
+    const col = r.cheat ? "var(--gold)" : c > e ? "var(--over)" : "var(--accent)";
+    bars += `<rect x="${x.toFixed(1)}" y="${Y(c).toFixed(1)}" width="${bw.toFixed(1)}" height="${(H-18-Y(c)).toFixed(1)}" rx="2.5" fill="${col}"><title>${k}: ${Math.round(c)} / ${Math.round(e)} kcal</title></rect>`;
+    if(r.cheat) bars += `<text x="${(x+bw/2).toFixed(1)}" y="${(Y(c)-4).toFixed(1)}" text-anchor="middle">🎉</text>`;
+  });
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">
+    <line x1="${P}" x2="${W-P}" y1="${Y(B)}" y2="${Y(B)}" stroke="var(--muted)" stroke-dasharray="3 4" stroke-width="1"/>
+    <text x="${W-P}" y="${Y(B)-4}" text-anchor="end">budget ${B}</text>
+    ${bars}<line x1="${P}" x2="${W-P}" y1="${H-18}" y2="${H-18}" stroke="var(--border)"/>
+    <text x="${P}" y="${H-4}">${days[0][0].slice(5)}</text><text x="${W-P}" y="${H-4}" text-anchor="end">today</text>
+  </svg>`;
+}
+function renderTrends(){
+  const wc = weeklyCloses(); const b = bank();
+  const w = weights(90); const first = w[0], last = w[w.length-1];
+  const delta = first && last && w.length>1 ? (ema(w)[w.length-1][1] - w[0][1]) : null;
+  let h = `<div class="kpis">
+    <div class="kpi"><div class="l">Trend change (90 d)</div><div class="v" style="color:${delta<0?"var(--ok)":"var(--ink)"}">${delta===null?"–":(delta>0?"+":"")+delta.toFixed(1)+" kg"}</div></div>
+    <div class="kpi"><div class="l">Calorie bank</div><div class="v" style="color:${b<0?"var(--over)":"var(--gold)"}">${b>=0?"+":""}${b.toLocaleString()}</div></div>
+  </div>`;
+  h += `<div class="card"><h3>Weight — dots are mornings, line is the truth</h3>${chartWeight(90)}</div>`;
+  h += `<div class="card"><h3>Last 14 days vs budget</h3>${chartCals(14)}</div>`;
+  h += `<div class="card"><h3>Weekly closes</h3>`;
+  h += wc.length ? wc.map(([wk,x])=>{
+    const sign = x.net>=0 ? "−" : "+";
+    return `<div class="wkrow"><span>Week of ${wk.slice(5)}</span>
+      <span class="num" style="color:${x.net>=0?"var(--ok)":"var(--over)"}">${sign}${Math.abs(Math.round(x.net)).toLocaleString()} kcal ≈ ${sign}${Math.abs(x.net/7700).toFixed(2)} kg</span></div>`;
+  }).join("") : `<div class="sub">Your first weekly close lands after a few tracked days.</div>`;
+  h += `</div>`;
+  return h;
+}
+
+/* ───────────────────────── Foods ───────────────────────── */
+function renderFoods(){
+  const q = (window._fq||"").toLowerCase();
+  const foods = S.foods.filter(f=>!q || f.n.toLowerCase().includes(q) || (f.a||[]).some(a=>a.toLowerCase().includes(q)))
+                       .sort((a,b)=>(b.fav?1:0)-(a.fav?1:0) || a.n.localeCompare(b.n));
+  let h = `<div class="row" style="margin-bottom:10px">
+    <input placeholder="Search foods…" value="${esc(window._fq||"")}" oninput="window._fq=this.value;render()">
+    <button class="primary" onclick="foodSheet()">+ Add</button></div>`;
+  h += `<div class="card">`;
+  h += foods.length ? foods.map(f=>`<div class="foodrow">
+      <button class="star ${f.fav?"fav":""}" onclick="toggleFav('${f.i}')">★</button>
+      <span style="flex:1" onclick="foodSheet('${f.i}')"><div style="font-size:15px">${esc(f.n)}</div>
+        <div class="sub">${f.k} kcal · ${f.p} g protein ${f.per==="item"?"per item":"per 100 g"}${f.a&&f.a.length?" · "+esc(f.a.join(", ")):""}</div></span>
+      <span class="sub">›</span></div>`).join("")
+    : `<div class="sub">Your personal foods live here — Claude's estimates never override them. Log something new and tick "Save to my foods", or add one manually. Starred foods become quick-log chips on Today.</div>`;
+  h += `</div>`;
+  return h;
+}
+function toggleFav(id){ const f = findFood(id); f.fav = !f.fav; f.u = Date.now(); persist(); render(); }
+function foodSheet(id){
+  const f = id ? findFood(id) : { n:"", a:[], per:"item", k:"", p:"", fav:false };
+  sheet(`<h2>${id?"Edit":"New"} food</h2>
+    <label>Name</label><input id="fn" value="${esc(f.n)}">
+    <label>Aliases (comma-separated — dictation nicknames)</label><input id="fa" value="${esc((f.a||[]).join(", "))}">
+    <label>Basis</label><select id="fper"><option value="item" ${f.per==="item"?"selected":""}>Per item / serving</option>
+      <option value="100g" ${f.per==="100g"?"selected":""}>Per 100 g</option></select>
+    <div class="row"><span style="flex:1"><label>kcal</label><input id="fk" type="number" inputmode="numeric" value="${f.k}"></span>
+      <span style="flex:1"><label>Protein g</label><input id="fp" type="number" inputmode="decimal" value="${f.p}"></span></div>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" style="flex:1" onclick="foodSave('${id||""}')">Save</button>
+      ${id?`<button class="danger" onclick="foodDel('${id}')">Delete</button>`:""}
+      <button onclick="closeSheet()">Cancel</button></div>`);
+}
+function foodSave(id){
+  const n = $("#fn").value.trim(); if(!n) return;
+  const data = { n, a:$("#fa").value.split(",").map(s=>s.trim()).filter(Boolean),
+    per:$("#fper").value, k:parseFloat($("#fk").value)||0, p:parseFloat($("#fp").value)||0, u:Date.now() };
+  if(id){ Object.assign(findFood(id), data); } else { S.foods.push({ i:uid(), fav:false, ...data }); }
+  persist(); closeSheet(); render();
+}
+function foodDel(id){ S.foods = S.foods.filter(f=>f.i!==id); persist(); closeSheet(); render(); }
+
+/* ───────────────────────── Settings ───────────────────────── */
+function renderSettings(){
+  const c = cfg();
+  return `
+  <div class="card"><h3>Targets</h3>
+    <label>Daily calorie budget</label><input id="s-budget" type="number" inputmode="numeric" value="${c.budget}">
+    <label>Daily protein target (g)</label><input id="s-protein" type="number" inputmode="numeric" value="${c.protein}">
+    <label>Goal weight (kg, optional)</label><input id="s-goal" type="number" inputmode="decimal" value="${c.goal||""}">
+  </div>
+  <div class="card"><h3>Bank rules</h3>
+    <label>Max deposit per day (kcal under budget that counts)</label><input id="s-cap" type="number" inputmode="numeric" value="${c.cap}">
+    <label>Daily floor — financing never cuts below this</label><input id="s-floor" type="number" inputmode="numeric" value="${c.floor}">
+  </div>
+  <div class="card"><h3>Connections</h3>
+    <label>Claude API key <span style="color:${SEC.anthropic?"var(--ok)":"var(--over)"}">${SEC.anthropic?"● connected":"● missing"}</span></label>
+    <input id="s-anthropic" type="password" placeholder="sk-ant-…" value="${esc(SEC.anthropic||"")}">
+    <label>Model</label><select id="s-model">
+      ${["claude-opus-5","claude-sonnet-5","claude-haiku-4-5"].map(m=>`<option ${SEC.model===m?"selected":""}>${m}</option>`).join("")}</select>
+    <label>GitHub token (fine-grained, balance-data repo) <span style="color:${SEC.github?"var(--ok)":"var(--over)"}">${SEC.github?"● connected":"● missing"}</span></label>
+    <input id="s-github" type="password" placeholder="github_pat_…" value="${esc(SEC.github||"")}">
+    <label>Data repo</label><input id="s-repo" value="${esc(SEC.repo)}">
+    <div class="row" style="margin-top:12px"><button class="primary" style="flex:1" onclick="saveSettings()">Save settings</button></div>
+    <div class="sub" style="margin-top:8px">Keys are stored only on this device, never in the synced data.</div>
+  </div>
+  <div class="card"><h3>Data</h3>
+    <div class="row"><button style="flex:1" onclick="exportData()">Export backup</button>
+    <button style="flex:1" onclick="importSheet()">Import</button></div>
+    <div class="sub" style="margin-top:8px">${Object.keys(S.days).length} days · ${S.foods.length} foods · synced to ${esc(SEC.repo)}</div>
+  </div>`;
+}
+function saveSettings(){
+  const c = cfg();
+  c.budget = parseInt($("#s-budget").value)||2000;
+  c.protein = parseInt($("#s-protein").value)||130;
+  c.goal = parseFloat($("#s-goal").value)||null;
+  c.cap = parseInt($("#s-cap").value)||300;
+  c.floor = parseInt($("#s-floor").value)||1500;
+  c.u = Date.now();
+  SEC.anthropic = $("#s-anthropic").value.trim();
+  SEC.model = $("#s-model").value;
+  SEC.github = $("#s-github").value.trim();
+  SEC.repo = $("#s-repo").value.trim();
+  saveSec(); persist(); toast("Saved"); pull(); render();
+}
+function exportData(){
+  const blob = new Blob([JSON.stringify(S,null,1)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "balance-backup-"+dkey()+".json"; a.click();
+}
+function importSheet(){
+  sheet(`<h2>Import backup</h2><label>Paste backup JSON</label><textarea id="imp" style="height:120px"></textarea>
+    <div class="row" style="margin-top:12px"><button class="primary danger" style="flex:1" onclick="doImport()">Replace my data</button>
+    <button onclick="closeSheet()">Cancel</button></div>`);
+}
+function doImport(){
+  try{ const j = JSON.parse($("#imp").value); if(!j.days || !j.config) throw 0;
+    S = j; persist(); closeSheet(); toast("Imported"); render();
+  }catch(e){ toast("That didn't look like a Balance backup."); }
+}
+
+/* ───────────────────────── demo ───────────────────────── */
+function demoSeed(s){
+  const foods = [
+    ["Cappuccino","item",90,4.7,1],["Banana","item",105,1.3,1],["Egg","item",74,6.3,1],
+    ["Oats","100g",389,16.9,0],["Milk 3.5%","100g",64,3.4,0],["Olive oil","100g",884,0,0],
+    ["Chicken breast","100g",165,31,1],["Rye bread slice","item",83,2.7,0],["Skyr","100g",63,11,1]];
+  s.foods = foods.map(([n,per,k,p,fav])=>({ i:uid(), n, per, k, p, fav:!!fav, a:[], u:Date.now() }));
+  let w = 87.4;
+  for(let i=34;i>=0;i--){
+    const d = new Date(); d.setDate(d.getDate()-i); const k = dkey(d);
+    const cheat = i===16;
+    const base = cheat ? 3400 : 1550 + Math.sin(i*1.7)*260 + (i%5===0?420:0);
+    const e = [];
+    let rem = base;
+    const parts = [["Breakfast",0.28],["Lunch",0.38],["Dinner",0.34]];
+    for(const [n,f] of parts){ const kc = Math.round(base*f); e.push({ i:uid(), t:"12:00", n, q:1, k:kc, p:Math.round(kc*0.05) }); }
+    w += (base-2000)/7700 + (Math.random()-0.5)*0.5;
+    s.days[k] = { e, w: i===3?undefined:Math.round(w*10)/10, u:Date.now() };
+    if(cheat) s.days[k].cheat = { total:3400, bank:900 };
+  }
+  const today = s.days[dkey()];
+  today.e = [ { i:uid(), t:"08:10", n:"Cappuccino", q:2, k:180, p:9 },
+              { i:uid(), t:"08:12", n:"Oats with milk", q:1, k:420, p:18 },
+              { i:uid(), t:"12:40", n:"Chicken salad", q:1, k:520, p:42 } ];
+  today.w = undefined;
+}
+async function demoParse(text){
+  await new Promise(r=>setTimeout(r,700));
+  return [
+    { name:"Cappuccino", qty:2, unit:"item", grams:0, kcal:220, protein_g:9, library_id:(S.foods.find(f=>f.n==="Cappuccino")||{}).i||"" },
+    { name:"Banana", qty:1, unit:"item", grams:120, kcal:105, protein_g:1.3, library_id:(S.foods.find(f=>f.n==="Banana")||{}).i||"" },
+    { name:"Currywurst", qty:1, unit:"item", grams:220, kcal:540, protein_g:21, library_id:"" }
+  ];
+}
+
+/* ───────────────────────── boot ───────────────────────── */
+function render(){
+  $("#main").innerHTML = { today:renderToday, trends:renderTrends, foods:renderFoods, settings:renderSettings }[view]();
+}
+go("today");
+if(ghReady()) pull(); else setDot("", DEMO ? "demo" : "local");
+if("serviceWorker" in navigator && !DEMO && location.protocol==="https:")
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
