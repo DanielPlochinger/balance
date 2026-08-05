@@ -174,7 +174,7 @@ function persist(){ localStorage.setItem(LSKEY, JSON.stringify(S)); scheduleSync
 function saveSec(){ localStorage.setItem(SECKEY, JSON.stringify(SEC)); }
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function dkey(d){ const x = d||new Date(); return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"); }
-function dayRec(k){ if(!S.days[k]) S.days[k] = { e:[], u:Date.now() }; return S.days[k]; }
+function dayRec(k){ if(!S.days[k]) S.days[k] = { e:[], u:0 }; return S.days[k]; }
 function touch(k){ S.days[k].u = Date.now(); persist(); }
 
 /* ───────────────────────── math ───────────────────────── */
@@ -322,11 +322,19 @@ function ghUrl(){ return `https://api.github.com/repos/${SEC.repo}/contents/stat
 function ghHeaders(){ return { "Authorization":"Bearer "+SEC.github, "Accept":"application/vnd.github+json" }; }
 function setDot(cls, txt){ const d = document.getElementById("syncdot"); d.className = cls; d.textContent = txt; }
 
+const hasContent = d => !!(d && ((d.e && d.e.length) || d.w || d.cheat || d.adj));
 function mergeState(remote){
   if(!remote) return;
   if((remote.config?.u||0) > (S.config.u||0)) S.config = remote.config;
-  for(const [k,r] of Object.entries(remote.days||{}))
-    if(!S.days[k] || (r.u||0) > (S.days[k].u||0)) S.days[k] = r;
+  for(const [k,r] of Object.entries(remote.days||{})){
+    const mine = S.days[k];
+    // Content always beats an empty record; timestamps only break content-vs-content ties.
+    const better = !mine ? true
+      : hasContent(r) && !hasContent(mine) ? true
+      : !hasContent(r) && hasContent(mine) ? false
+      : (r.u||0) > (mine.u||0);
+    if(better) S.days[k] = r;
+  }
   const mine = Object.fromEntries(S.foods.map(f=>[f.i,f]));
   for(const f of (remote.foods||[]))
     if(!mine[f.i] || (f.u||0) > (mine[f.i].u||0)) mine[f.i] = f;

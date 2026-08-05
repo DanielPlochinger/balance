@@ -18,8 +18,11 @@ once confirmed.
   (code only — never put data or keys there).
 - Data: `state.json` in the **private** repo `DanielPlochinger/balance-data`,
   written via the GitHub Contents API. Merge strategy: per-day / per-food
-  `u` (updatedAt) timestamps, last-write-wins; sha-based optimistic concurrency
-  with one pull-merge-retry on conflict.
+  `u` (updatedAt) timestamps, last-write-wins, with a content guard: a day
+  holding entries/weight/cheat always beats an empty record regardless of
+  timestamps (an auto-created empty "today" once clobbered real entries —
+  don't remove this guard). Auto-created day records get `u:0`; only real
+  mutations bump `u`. Sha-based optimistic concurrency, one pull-merge-retry.
 - LLM parsing: browser-direct call to the Claude API
   (`anthropic-dangerous-direct-browser-access` header), structured outputs
   (`output_config.format` json_schema). Library matches are recomputed
