@@ -727,10 +727,10 @@ function saveSettings(){
   c.cap = parseInt($("#s-cap").value)||300;
   c.floor = parseInt($("#s-floor").value)||1500;
   c.u = Date.now();
-  SEC.anthropic = $("#s-anthropic").value.trim();
+  SEC.anthropic = $("#s-anthropic").value.replace(/\s/g,"");
   SEC.model = $("#s-model").value;
-  SEC.github = $("#s-github").value.trim();
-  SEC.repo = $("#s-repo").value.trim();
+  SEC.github = $("#s-github").value.replace(/[^A-Za-z0-9_]/g,"");
+  SEC.repo = $("#s-repo").value.trim().replace(/^https?:\/\/github\.com\//,"").replace(/\/$/,"");
   saveSec(); persist(); toast("Saved"); pull(); render();
 }
 function exportData(){
