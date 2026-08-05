@@ -332,19 +332,20 @@ function mergeState(remote){
     if(!mine[f.i] || (f.u||0) > (mine[f.i].u||0)) mine[f.i] = f;
   S.foods = Object.values(mine);
 }
+let lastSyncErr = null;
 async function pull(){
   if(!ghReady()) return;
   try{
     setDot("pending","syncing");
     const res = await fetch(ghUrl()+"?ref=main", { headers: ghHeaders() });
     if(res.status === 404){ remoteSha = null; setDot("ok","synced"); return; }
-    if(!res.ok) throw new Error("GitHub "+res.status);
+    if(!res.ok) throw new Error(await ghErr(res));
     const j = await res.json();
     remoteSha = j.sha;
     mergeState(JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g,""))))));
     localStorage.setItem(LSKEY, JSON.stringify(S));
-    setDot("ok","synced"); render();
-  }catch(e){ setDot("err","offline"); }
+    lastSyncErr = null; setDot("ok","synced"); render();
+  }catch(e){ lastSyncErr = e.message; setDot("err","sync error"); }
 }
 async function push(retry){
   if(!ghReady()) { setDot("","local"); return; }
@@ -356,12 +357,49 @@ async function push(retry){
     const res = await fetch(ghUrl(), { method:"PUT", headers:ghHeaders(), body:JSON.stringify(body) });
     if(res.status === 409 || res.status === 422){
       if(!retry){ await pull(); return push(true); }
-      throw new Error("conflict");
+      throw new Error("conflict after retry");
     }
-    if(!res.ok) throw new Error("GitHub "+res.status);
+    if(!res.ok) throw new Error(await ghErr(res));
     remoteSha = (await res.json()).content.sha;
-    setDot("ok","synced");
-  }catch(e){ setDot("err","sync error"); }
+    lastSyncErr = null; setDot("ok","synced");
+  }catch(e){ lastSyncErr = e.message; setDot("err","sync error"); }
+}
+async function ghErr(res){
+  const j = await res.json().catch(()=>({}));
+  return "HTTP "+res.status+(j.message?" — "+j.message:"");
+}
+async function testConnections(){
+  const out = $("#testout"); out.innerHTML = `<div class="sub">Testing…</div>`;
+  let gh = "", cl = "";
+  // GitHub: can the token see the repo, and can it write?
+  if(!SEC.github) gh = "✗ No GitHub token entered.";
+  else try{
+    const res = await fetch("https://api.github.com/repos/"+SEC.repo, { headers: ghHeaders() });
+    if(res.status === 401) gh = "✗ GitHub says the token itself is invalid or expired (401). Regenerate it and paste again.";
+    else if(res.status === 404) gh = `✗ Token works but cannot see <b>${esc(SEC.repo)}</b> (404). Two usual causes: the token's <i>Repository access</i> doesn't include balance-data, or the repo field is wrong — it must be exactly <code>DanielPlochinger/balance-data</code>.`;
+    else if(!res.ok) gh = "✗ GitHub: "+await ghErr(res);
+    else {
+      const j = await res.json();
+      gh = j.permissions && j.permissions.push
+        ? "✓ GitHub: token sees the repo and has write access."
+        : "✗ Token sees the repo but is <b>read-only</b> — edit the token and set Contents to <i>Read and write</i>.";
+    }
+  }catch(e){ gh = "✗ GitHub unreachable: "+esc(e.message); }
+  // Claude: minimal ping
+  if(!SEC.anthropic) cl = "✗ No Claude API key entered.";
+  else try{
+    const res = await fetch("https://api.anthropic.com/v1/messages", { method:"POST",
+      headers:{ "content-type":"application/json", "x-api-key":SEC.anthropic,
+        "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+      body: JSON.stringify({ model:SEC.model, max_tokens:1, messages:[{role:"user",content:"ping"}] }) });
+    if(res.status === 401) cl = "✗ Claude: key rejected (401) — re-copy it from console.anthropic.com.";
+    else if(res.ok) cl = "✓ Claude: key works, model responds.";
+    else { const j = await res.json().catch(()=>({}));
+      cl = "✗ Claude: HTTP "+res.status+" — "+esc(j.error && j.error.message || "unknown error")
+         + (res.status===400 && /credit|billing/i.test(j.error&&j.error.message||"") ? " (add credit under Billing)" : ""); }
+  }catch(e){ cl = "✗ Claude unreachable: "+esc(e.message); }
+  out.innerHTML = `<div class="sub" style="margin-top:8px">${gh}<br>${cl}${lastSyncErr?`<br>Last sync error: ${esc(lastSyncErr)}`:""}</div>`;
+  if(gh.startsWith("✓")) { await pull(); push(false); }
 }
 function scheduleSync(){ if(!ghReady()) return; clearTimeout(syncTimer); syncTimer = setTimeout(()=>push(false), 2500); }
 document.addEventListener("visibilitychange", ()=>{ if(document.hidden && ghReady()){ clearTimeout(syncTimer); push(false); } });
@@ -670,7 +708,9 @@ function renderSettings(){
     <label>GitHub token (fine-grained, balance-data repo) <span style="color:${SEC.github?"var(--ok)":"var(--over)"}">${SEC.github?"● connected":"● missing"}</span></label>
     <input id="s-github" type="password" placeholder="github_pat_…" value="${esc(SEC.github||"")}">
     <label>Data repo</label><input id="s-repo" value="${esc(SEC.repo)}">
-    <div class="row" style="margin-top:12px"><button class="primary" style="flex:1" onclick="saveSettings()">Save settings</button></div>
+    <div class="row" style="margin-top:12px"><button class="primary" style="flex:1" onclick="saveSettings()">Save settings</button>
+    <button onclick="testConnections()">Test connections</button></div>
+    <div id="testout"></div>
     <div class="sub" style="margin-top:8px">Keys are stored only on this device, never in the synced data.</div>
   </div>
   <div class="card"><h3>Data</h3>
