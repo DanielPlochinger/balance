@@ -155,7 +155,7 @@ h4.sec{font-size:16px;font-weight:800;margin:18px 0 8px;}
 
 <script>
 "use strict";
-const APP_VERSION = "2.2.2";
+const APP_VERSION = "2.3.0";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -181,6 +181,10 @@ function uid(){ return Math.random().toString(36).slice(2,10); }
 function dkey(d){ const x = d||new Date(); return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"); }
 function dayRec(k){ if(!S.days[k]) S.days[k] = { e:[], u:0 }; return S.days[k]; }
 function touch(k){ S.days[k].u = Date.now(); persist(); }
+function purgeWiped(){
+  const w = S.config.wipedAt || 0; if(!w) return;
+  for(const k of Object.keys(S.days)) if((S.days[k].u||0) < w) delete S.days[k];
+}
 
 /* ───────────────────────── math ───────────────────────── */
 const cfg = () => S.config;
@@ -269,13 +273,13 @@ function lockCheat(dateK, plan){
 async function llmParse(text){
   if(DEMO) return demoParse(text);
   if(!SEC.anthropic) throw new Error("No Claude API key yet — add it in Settings.");
-  const lib = S.foods.slice(0,300).map(f=>`${f.i}|${f.n}${f.a&&f.a.length?" ("+f.a.join(", ")+")":""}|per ${f.per==="item"?"item":"100 g"}|${f.k} kcal|${f.p} g protein`).join("\n");
+  const lib = S.foods.slice(0,300).map(f=>`${f.i}|${f.n}${f.a&&f.a.length?" ("+f.a.join(", ")+")":""}|per ${f.per==="item"?"item":f.per==="100ml"?"100 ml":"100 g"}|${f.k} kcal|${f.p} g protein`).join("\n");
   const sys = `You convert casual food-diary text (often dictated, possibly German or English) into structured nutrition data.
 Rules:
 - Split the text into individual food items with quantities.
 - The user's saved foods are listed below with an id. If an item clearly matches one, set library_id to that id — the app recomputes kcal/protein from the library, so your numbers are only a fallback.
 - Otherwise estimate kcal and protein yourself using standard nutrition knowledge. kcal and protein_g must be TOTALS for the stated quantity.
-- grams: your best estimate of the total weight in grams for the line (0 if it makes no sense, e.g. a drink counted per cup is fine to estimate in ml→g).
+- grams: your best estimate of the total weight in grams for the line (0 if it makes no sense). For drinks and liquids — especially library foods with a per-100 ml basis — report the volume in millilitres as grams (assume 1 ml ≈ 1 g).
 - unit: short label like "item", "g", "ml", "slice", "cup".
 - Keep names short and singular ("Cappuccino", not "two cappuccinos").
 User's saved foods (id|name|basis|kcal|protein):
@@ -344,6 +348,7 @@ function mergeState(remote){
   for(const f of (remote.foods||[]))
     if(!mine[f.i] || (f.u||0) > (mine[f.i].u||0)) mine[f.i] = f;
   S.foods = Object.values(mine);
+  purgeWiped();
 }
 let lastSyncErr = null;
 async function pull(){
@@ -468,7 +473,7 @@ function renderToday(){
       </div>
     </div>
   </div>`;
-  if(favs.length) h += `<div id="chips">${favs.map(f=>`<button class="chip" onclick="quickLog('${f.i}')">+ ${esc(f.n)} <span class="sub">${f.per==="item"?f.k:f.k+"/100g"}</span></button>`).join("")}</div>`;
+  if(favs.length) h += `<div id="chips">${favs.map(f=>`<button class="chip" onclick="quickLog('${f.i}')">+ ${esc(f.n)} <span class="sub">${f.per==="item"?f.k:f.k+"/100"+(f.per==="100ml"?"ml":"g")}</span></button>`).join("")}</div>`;
   h += `<div id="parserow"><textarea id="foodtext" placeholder="Dictate or type… e.g. two cappuccinos, one banana, 60 g oats, 3 eggs" enterkeyhint="done"></textarea></div>
     <div class="row" style="margin-bottom:14px">
       <button class="primary" style="flex:1" onclick="doParse()">Log with Claude</button>
@@ -677,7 +682,7 @@ function renderFoods(){
   h += foods.length ? foods.map(f=>`<div class="foodrow">
       <button class="star ${f.fav?"fav":""}" onclick="toggleFav('${f.i}')">★</button>
       <span style="flex:1" onclick="foodSheet('${f.i}')"><div style="font-size:15px">${esc(f.n)}</div>
-        <div class="sub">${f.k} kcal · ${f.p} g protein ${f.per==="item"?"per item":"per 100 g"}${f.a&&f.a.length?" · "+esc(f.a.join(", ")):""}</div></span>
+        <div class="sub">${f.k} kcal · ${f.p} g protein ${f.per==="item"?"per item":f.per==="100ml"?"per 100 ml":"per 100 g"}${f.a&&f.a.length?" · "+esc(f.a.join(", ")):""}</div></span>
       <span class="sub">›</span></div>`).join("")
     : `<div class="sub">Your personal foods live here — Claude's estimates never override them. Log something new and tick "Save to my foods", or add one manually. Starred foods become quick-log chips on Today.</div>`;
   h += `</div>`;
@@ -690,7 +695,8 @@ function foodSheet(id){
     <label>Name</label><input id="fn" value="${esc(f.n)}">
     <label>Aliases (comma-separated — dictation nicknames)</label><input id="fa" value="${esc((f.a||[]).join(", "))}">
     <label>Basis</label><select id="fper"><option value="item" ${f.per==="item"?"selected":""}>Per item / serving</option>
-      <option value="100g" ${f.per==="100g"?"selected":""}>Per 100 g</option></select>
+      <option value="100g" ${f.per==="100g"?"selected":""}>Per 100 g</option>
+      <option value="100ml" ${f.per==="100ml"?"selected":""}>Per 100 ml</option></select>
     <div class="row"><span style="flex:1"><label>kcal</label><input id="fk" type="number" inputmode="numeric" value="${f.k}"></span>
       <span style="flex:1"><label>Protein g</label><input id="fp" type="number" inputmode="decimal" value="${f.p}"></span></div>
     <div class="row" style="margin-top:14px">
@@ -809,6 +815,7 @@ async function demoParse(text){
 function render(){
   $("#main").innerHTML = { today:renderToday, trends:renderTrends, foods:renderFoods, settings:renderSettings }[view]();
 }
+purgeWiped();
 go("today");
 if(ghReady()) pull(); else setDot("", DEMO ? "demo" : "local");
 if("serviceWorker" in navigator && !DEMO && location.protocol==="https:")
