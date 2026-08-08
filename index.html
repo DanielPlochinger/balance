@@ -38,7 +38,7 @@ body[data-view="settings"]{--accent:var(--steel);}
 #wrap{max-width:480px;margin:0 auto;padding:0 16px;}
 header{display:flex;align-items:center;justify-content:space-between;
   padding:calc(18px + env(safe-area-inset-top)) 2px 12px;}
-header h1{font-size:30px;font-weight:800;letter-spacing:-.025em;}
+header h1{font-size:30px;font-weight:800;letter-spacing:-.025em;color:var(--accent);}
 #syncdot{font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:6px;
   background:var(--surface);border:0.5px solid var(--border);padding:5px 11px;border-radius:999px;box-shadow:var(--shadow);}
 #syncdot::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--dot,#9CA1A7);}
@@ -64,7 +64,7 @@ header h1{font-size:30px;font-weight:800;letter-spacing:-.025em;}
 .meter.thin{height:6px;border-radius:3px;margin:8px 0 4px;}
 .meter.thin>div{border-radius:3px;}
 .meterlabels{margin:8px 0 4px;}
-.streak{background:var(--amber-tint);color:var(--gold);font-weight:700;
+.streak{background:color-mix(in srgb,var(--green) 12%,#fff);color:var(--green);font-weight:700;
   font-size:12.5px;padding:5px 11px;border-radius:999px;white-space:nowrap;}
 button{font-family:var(--sans);font-size:15px;font-weight:600;color:var(--ink);background:var(--surface2);
   border:none;border-radius:999px;padding:11px 17px;cursor:pointer;
@@ -155,7 +155,7 @@ h4.sec{font-size:16px;font-weight:800;margin:18px 0 8px;}
 
 <script>
 "use strict";
-const APP_VERSION = "2.2.1";
+const APP_VERSION = "2.2.2";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -481,7 +481,7 @@ function renderToday(){
     : `<div class="sub">Nothing yet. Tell me what you ate.</div>`;
   h += `</div>`;
   h += `<div class="kpis">
-    <div class="kpi"><div class="l">Calorie bank</div><div class="v" style="color:${b<0?"var(--over)":"var(--gold)"}">${b>=0?"+":""}${b.toLocaleString()}</div><div class="sub">${b<0?"in debt — auto-repaying":"banked from good days"}</div></div>
+    <div class="kpi"><div class="l">Calorie bank</div><div class="v" style="color:${b<0?"var(--over)":"var(--green)"}">${b>=0?"+":""}${b.toLocaleString()}</div><div class="sub">${b<0?"in debt — auto-repaying":"banked from good days"}</div></div>
     <div class="kpi"><div class="l">Weight today</div>
       <div class="row"><input id="win" type="number" inputmode="decimal" step="0.1" placeholder="${lastWeight()||"kg"}" value="${r.w||""}" style="width:84px;padding:6px 8px"><button class="ghost" onclick="saveWeight()">Save</button></div></div>
   </div>`;
@@ -651,7 +651,7 @@ function renderTrends(){
   const delta = first && last && w.length>1 ? (ema(w)[w.length-1][1] - w[0][1]) : null;
   let h = `<div class="kpis">
     <div class="kpi"><div class="l">90-day trend</div><div class="v" style="color:${delta<0?"var(--ok)":"var(--ink)"}">${delta===null?"–":(delta>0?"+":"")+delta.toFixed(1)+" kg"}</div></div>
-    <div class="kpi"><div class="l">Calorie bank</div><div class="v" style="color:${b<0?"var(--over)":"var(--gold)"}">${b>=0?"+":""}${b.toLocaleString()}</div></div>
+    <div class="kpi"><div class="l">Calorie bank</div><div class="v" style="color:${b<0?"var(--over)":"var(--green)"}">${b>=0?"+":""}${b.toLocaleString()}</div></div>
   </div>`;
   h += `<div class="card"><h3>Weight — dots are mornings, line is the truth</h3>${chartWeight(90)}</div>`;
   h += `<div class="card"><h3>Last 14 days vs budget</h3>${chartCals(14)}</div>`;
@@ -672,7 +672,7 @@ function renderFoods(){
                        .sort((a,b)=>(b.fav?1:0)-(a.fav?1:0) || a.n.localeCompare(b.n));
   let h = `<div class="row" style="margin-bottom:10px">
     <input placeholder="Search foods…" value="${esc(window._fq||"")}" oninput="window._fq=this.value;render()">
-    <button class="primary" onclick="foodSheet()">+ Add</button></div>`;
+    <button class="primary" style="padding:11px 15px;font-size:14.5px;flex:0 0 auto" onclick="foodSheet()">+ Add</button></div>`;
   h += `<div class="card">`;
   h += foods.length ? foods.map(f=>`<div class="foodrow">
       <button class="star ${f.fav?"fav":""}" onclick="toggleFav('${f.i}')">★</button>
