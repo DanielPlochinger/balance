@@ -32,12 +32,15 @@ once confirmed.
 
 ## Conventions
 
-- v2.0 look (Panic × Notion × Apple): warm paper ground `#F7F7F5`, white
-  floating cards (soft shadow, hairline border, 16–18px radius), floating
-  blurred pill dock for tabs, tinted pill chips. Per-view accents kept:
+- v2.1 look (research-driven: Liquid Glass + M3 Expressive + ADA winners):
+  pure white ground, tonal `#F5F5F3` cards (no borders/shadows), accent-washed
+  hero panel with a giant SF Rounded number + capsule meters (no ring),
+  capsule buttons, Liquid-Glass floating dock with accent-filled active pill,
+  springy motion (`--spring` overshoot bezier). **Light theme only** — dark
+  mode was deliberately removed at Daniel's request. Per-view accents:
   Today teal `#089171`, Trends indigo `#4F5BE8`, Foods coral `#E14B2E`,
-  Settings gold `#B57E0A` (brighter variants in dark mode), set via
-  `body[data-view]`; `--tint` derives 9% washes via color-mix.
+  Settings gold `#B57E0A`, via `body[data-view]`; `--tint`/`--wash` washes
+  via color-mix.
 - Type: `ui-rounded` (SF Rounded on iOS) for display numbers and titles,
   system sans for UI, tabular-nums throughout.
   No webfonts — zero external requests except GitHub + Anthropic APIs.
