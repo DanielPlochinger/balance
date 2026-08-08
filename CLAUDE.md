@@ -32,15 +32,17 @@ once confirmed.
 
 ## Conventions
 
-- v2.1 look (research-driven: Liquid Glass + M3 Expressive + ADA winners):
-  pure white ground, tonal `#F5F5F3` cards (no borders/shadows), accent-washed
-  hero panel with a giant SF Rounded number + capsule meters (no ring),
-  capsule buttons, Liquid-Glass floating dock with accent-filled active pill,
-  springy motion (`--spring` overshoot bezier). **Light theme only** — dark
-  mode was deliberately removed at Daniel's request. Per-view accents:
-  Today teal `#089171`, Trends indigo `#4F5BE8`, Foods coral `#E14B2E`,
-  Settings gold `#B57E0A`, via `body[data-view]`; `--tint`/`--wash` washes
-  via color-mix.
+- v2.2 look (reference-researched: Things, Flighty, Gentler Streak — Daniel
+  rejected warm/"Claude" palettes; cool neutrals only): cool grey ground
+  `#F3F5F7`, white structured cards (hairline + soft shadow, 18px radius),
+  compact ring + big numeral side-by-side hero (density + drama), capsule
+  buttons/chips/dock, dock active = tinted pill. **SF Rounded is reserved for
+  numerals** (`.num`/`.heronum2`/`.kpi .v`); titles are heavy system sans.
+  **Light theme only** (dark mode removed at Daniel's request). Per-view
+  accents (vivid, cool-leaning): Today green `#0FA958`, Trends blue `#2E7CF6`,
+  Foods orange `#F26B1D`, Settings steel `#5B6472`; amber `#C77E06` is a
+  semantic color for bank/streak only. Never reintroduce warm grey grounds
+  or muted gold accents.
 - Type: `ui-rounded` (SF Rounded on iOS) for display numbers and titles,
   system sans for UI, tabular-nums throughout.
   No webfonts — zero external requests except GitHub + Anthropic APIs.
