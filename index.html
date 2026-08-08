@@ -155,6 +155,7 @@ h4.sec{font-size:16px;font-weight:800;margin:18px 0 8px;}
 
 <script>
 "use strict";
+const APP_VERSION = "2.2.1";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -735,7 +736,7 @@ function renderSettings(){
   <div class="card"><h3>Data</h3>
     <div class="row"><button style="flex:1" onclick="exportData()">Export backup</button>
     <button style="flex:1" onclick="importSheet()">Import</button></div>
-    <div class="sub" style="margin-top:8px">${Object.keys(S.days).length} days · ${S.foods.length} foods · synced to ${esc(SEC.repo)}</div>
+    <div class="sub" style="margin-top:8px">Balance v${APP_VERSION} · ${Object.keys(S.days).length} days · ${S.foods.length} foods · synced to ${esc(SEC.repo)}</div>
   </div>`;
 }
 function saveSettings(){
