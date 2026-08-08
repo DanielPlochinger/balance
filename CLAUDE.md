@@ -32,11 +32,18 @@ once confirmed.
 
 ## Conventions
 
-- Design language mirrors the invoice app: per-view accent colors
-  (Today teal `#0A8878`, Trends indigo `#3848C0`, Foods coral `#C83818`,
-  Settings golden `#B07800`), set via `body[data-view]`.
-- Type: `ui-serif` (New York on iOS) for display numbers, system sans for UI.
+- v2.0 look (Panic × Notion × Apple): warm paper ground `#F7F7F5`, white
+  floating cards (soft shadow, hairline border, 16–18px radius), floating
+  blurred pill dock for tabs, tinted pill chips. Per-view accents kept:
+  Today teal `#089171`, Trends indigo `#4F5BE8`, Foods coral `#E14B2E`,
+  Settings gold `#B57E0A` (brighter variants in dark mode), set via
+  `body[data-view]`; `--tint` derives 9% washes via color-mix.
+- Type: `ui-rounded` (SF Rounded on iOS) for display numbers and titles,
+  system sans for UI, tabular-nums throughout.
   No webfonts — zero external requests except GitHub + Anthropic APIs.
+- v1.0 look (serif numerals, edge-to-edge tab bar, ledger neutrals) is
+  frozen at git tag `v1.0` / GitHub release. Revert:
+  `git checkout v1.0 -- . && git commit && git push` (bump sw.js CACHE after).
 - Light and dark themes via CSS custom properties; both must stay legible.
 - No browser-native `alert`/`confirm`/`prompt` — the bottom-sheet (`sheet()`)
   is the only modal.
