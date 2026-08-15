@@ -1,4 +1,4 @@
-const CACHE = "balance-v10";
+const CACHE = "balance-v11";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-180.png", "icon-512.png"];
 
 self.addEventListener("install", e => {

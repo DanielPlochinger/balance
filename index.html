@@ -148,7 +148,7 @@ nav button.on{color:var(--accent);background:var(--tint);font-weight:700;}
 
 <script>
 "use strict";
-const APP_VERSION = "2.4.0";
+const APP_VERSION = "2.4.1";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -316,7 +316,7 @@ function weights(n){
 async function llmParse(text){
   if(DEMO) return demoParse(text);
   if(!SEC.anthropic) throw new Error("No Claude API key yet — add it in Settings.");
-  const lib = S.foods.slice(0,300).map(f=>`${f.i}|${f.n}${f.a&&f.a.length?" ("+f.a.join(", ")+")":""}|per ${f.per==="item"?"item":f.per==="100ml"?"100 ml":"100 g"}|${f.k} kcal`).join("\n");
+  const lib = activeFoods().slice(0,300).map(f=>`${f.i}|${f.n}${f.a&&f.a.length?" ("+f.a.join(", ")+")":""}|per ${f.per==="item"?"item":f.per==="100ml"?"100 ml":"100 g"}|${f.k} kcal`).join("\n");
   const sys = `You convert casual food-diary text (often dictated, possibly German or English) into structured nutrition data.
 Rules:
 - Split the text into individual food items with quantities.
@@ -352,7 +352,8 @@ ${lib || "(none yet)"}`;
   return JSON.parse(block.text).items || [];
 }
 
-function findFood(id){ return S.foods.find(f=>f.i===id); }
+function findFood(id){ const f = S.foods.find(f=>f.i===id); return f && !f.del ? f : null; }
+const activeFoods = () => S.foods.filter(f=>!f.del);
 function enrich(items){
   return items.map(it=>{
     const f = it.library_id ? findFood(it.library_id) : null;
@@ -364,7 +365,7 @@ function enrich(items){
              k = Math.round(f.k * g/100); }
     }
     return { name:it.name, qty:it.qty, unit:it.unit, grams:it.grams, k, src,
-             save: src==="ai" && !S.foods.some(x=>x.n.toLowerCase()===it.name.toLowerCase()) };
+             save: src==="ai" && !activeFoods().some(x=>x.n.toLowerCase()===it.name.toLowerCase()) };
   });
 }
 
@@ -501,7 +502,7 @@ function renderToday(){
   const trim = ledger().todayTrim, B = cfg().budget, T = B - trim;
   const left = T - c, over = left < 0, st = streak();
   const needsSetup = !DEMO && (!SEC.anthropic || !SEC.github);
-  const favs = S.foods.filter(f=>f.fav).slice(0,12);
+  const favs = activeFoods().filter(f=>f.fav).slice(0,12);
   const dateStr = new Date().toLocaleDateString("en-GB",{ weekday:"long", day:"numeric", month:"long" });
   let h = "";
   if(needsSetup) h += `<div class="banner"><b>Almost live.</b> Add your Claude API key ${SEC.github?"":"and GitHub token "}in <a href="#" onclick="go('settings');return false" style="color:var(--gold)">Settings</a> to unlock dictation parsing and cloud sync. Manual logging already works.</div>`;
@@ -578,7 +579,7 @@ function addEntries(items){
   render();
 }
 function saveToLibrary(it){
-  if(S.foods.some(f=>f.n.toLowerCase()===it.name.toLowerCase())) return;
+  if(activeFoods().some(f=>f.n.toLowerCase()===it.name.toLowerCase())) return;
   const perItem = !(it.grams>0) || it.unit==="item" || (it.qty>=1 && it.unit!=="g" && it.unit!=="ml");
   const f = { i:uid(), n:it.name, a:[], fav:false, u:Date.now() };
   if(perItem){ f.per="item"; f.k=Math.round(it.k/(it.qty||1)); }
@@ -728,7 +729,7 @@ function renderTrends(){
 /* ───────────────────────── Foods ───────────────────────── */
 function renderFoods(){
   const q = (window._fq||"").toLowerCase();
-  const foods = S.foods.filter(f=>!q || f.n.toLowerCase().includes(q) || (f.a||[]).some(a=>a.toLowerCase().includes(q)))
+  const foods = activeFoods().filter(f=>!q || f.n.toLowerCase().includes(q) || (f.a||[]).some(a=>a.toLowerCase().includes(q)))
                        .sort((a,b)=>(b.fav?1:0)-(a.fav?1:0) || a.n.localeCompare(b.n));
   let h = `<div class="row" style="margin-bottom:10px">
     <input placeholder="Search foods…" value="${esc(window._fq||"")}" oninput="window._fq=this.value;render()">
@@ -765,7 +766,7 @@ function foodSave(id){
   if(id){ Object.assign(findFood(id), data); } else { S.foods.push({ i:uid(), fav:false, ...data }); }
   persist(); closeSheet(); render();
 }
-function foodDel(id){ S.foods = S.foods.filter(f=>f.i!==id); persist(); closeSheet(); render(); }
+function foodDel(id){ const f = S.foods.find(f=>f.i===id); if(f){ f.del = 1; f.u = Date.now(); } persist(); closeSheet(); render(); }
 
 /* ───────────────────────── Settings ───────────────────────── */
 function renderSettings(){
