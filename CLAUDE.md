@@ -3,10 +3,17 @@
 ## What this is
 
 Daniel's personal calorie/weight tracker. Core metaphor: **calories are money**.
-Daily budget, a calorie **bank** (capped deposits from under-budget days, full
-debt from over-budget days), and **cheat days** that are financed (bank first,
-then trims spread over following days, never below the floor) and **locked**
-once confirmed.
+v2.4 mechanics (full spec: `V2.4_PLAN.md` §0 — read it before touching the math):
+daily settlement vs the **normal budget**; under-budget surplus becomes a
+**deposit** (capped 300/day, expires after 10 days, FIFO); overage drains
+deposits oldest-first, remainder becomes **debt** with an automatic repayment
+schedule (60%/400/900/500 formula — trims shrink following days' targets);
+misses re-plan, overpayment shortens; the streak breaks only on a miss or an
+unlogged day (debt alone never breaks it — redemption design). No cheat-day
+feature (removed in v2.4). Per-day settings **snapshots** (`b/c/g/m`) make
+closed days immutable; weekly closes are physiological (vs maintenance,
+7,700 kcal/kg). No protein anywhere (removed in v2.4). Everything except day
+records + snapshots is derived — never persist ledger/plan state.
 
 ## Architecture (do not re-litigate)
 

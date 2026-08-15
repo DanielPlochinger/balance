@@ -13,7 +13,7 @@
 <link rel="icon" href="icon-180.png">
 <style>
 :root{
-  --bg:#F3F5F7; --surface:#FFFFFF; --surface2:#F0F2F4; --tonal:#F0F2F4; --tonal2:#E4E7EA;
+  --bg:#F3F5F7; --surface:#FFFFFF; --surface2:#F0F2F4; --tonal2:#E4E7EA;
   --ink:#15171A; --muted:#6B7076;
   --border:rgba(20,26,34,.08); --border-strong:rgba(20,26,34,.16);
   --green:#0FA958; --blue:#2E7CF6; --orange:#F26B1D; --steel:#5B6472;
@@ -59,11 +59,6 @@ header h1{font-size:30px;font-weight:800;letter-spacing:-.025em;color:var(--acce
   line-height:1.05;font-variant-numeric:tabular-nums;}
 .heronum2.neg{color:var(--over);}
 .hero2 .sub{font-size:12.5px;}
-.meter{height:10px;border-radius:5px;background:var(--ring-track);overflow:hidden;}
-.meter>div{height:100%;border-radius:5px;background:var(--accent);transition:width .45s var(--spring);}
-.meter.thin{height:6px;border-radius:3px;margin:8px 0 4px;}
-.meter.thin>div{border-radius:3px;}
-.meterlabels{margin:8px 0 4px;}
 .streak{background:color-mix(in srgb,var(--green) 12%,#fff);color:var(--green);font-weight:700;
   font-size:12.5px;padding:5px 11px;border-radius:999px;white-space:nowrap;}
 button{font-family:var(--sans);font-size:15px;font-weight:600;color:var(--ink);background:var(--surface2);
@@ -89,7 +84,6 @@ label{font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin:1
 .entry:last-child{border-bottom:none;}
 .entry .n{font-size:15px;font-weight:500;} .entry .t{font-size:11px;color:var(--muted);margin-right:8px;font-variant-numeric:tabular-nums;}
 .entry .k{font-family:var(--display);font-variant-numeric:tabular-nums;font-size:15.5px;font-weight:700;}
-.entry .p{font-size:11px;color:var(--muted);}
 #parserow{display:flex;gap:8px;margin-bottom:10px;}
 #parserow textarea{resize:none;height:80px;border-radius:16px;background:var(--surface);border:0.5px solid var(--border);box-shadow:var(--shadow);}
 nav{position:fixed;bottom:calc(12px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
@@ -111,7 +105,7 @@ nav button.on{color:var(--accent);background:var(--tint);font-weight:700;}
 #sheet h2{font-size:21px;font-weight:800;letter-spacing:-.02em;margin-bottom:12px;}
 .sheet-item{background:var(--surface);border:0.5px solid var(--border);border-radius:16px;
   padding:12px 14px;margin-bottom:9px;box-shadow:var(--shadow);}
-.sheet-item .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;}
+.sheet-item .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
 .sheet-item input{padding:8px 10px;font-size:15px;}
 .srcbadge{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;}
 .srcbadge.lib{background:color-mix(in srgb,var(--green) 12%,#fff);color:var(--green);}
@@ -130,7 +124,6 @@ nav button.on{color:var(--accent);background:var(--tint);font-weight:700;}
 .foodrow .star.fav{color:#F0A312;}
 .wkrow{display:flex;justify-content:space-between;padding:9px 2px;border-bottom:1px solid rgba(20,26,34,.05);font-size:14px;}
 .wkrow:last-child{border-bottom:none;}
-h4.sec{font-size:16px;font-weight:800;margin:18px 0 8px;}
 .kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
 .kpi{background:var(--surface);border-radius:16px;border:0.5px solid var(--border);padding:13px 15px;box-shadow:var(--shadow);}
 .kpi .v{font-family:var(--display);font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
@@ -155,7 +148,7 @@ h4.sec{font-size:16px;font-weight:800;margin:18px 0 8px;}
 
 <script>
 "use strict";
-const APP_VERSION = "2.3.0";
+const APP_VERSION = "2.4.0";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -170,12 +163,12 @@ let remoteSha = null, syncTimer = null, view = "today", pendingItems = null;
 function load(){ try{ return JSON.parse(localStorage.getItem(LSKEY)); }catch(e){ return null; } }
 function seed(){
   const s = { v:1,
-    config:{ budget:2000, protein:130, cap:300, floor:1500, goal:null, u:Date.now() },
+    config:{ budget:2000, maintenance:2400, cap:300, goal:null, u:Date.now() },
     days:{}, foods:[] };
   if(DEMO) demoSeed(s);
   return s;
 }
-function persist(){ localStorage.setItem(LSKEY, JSON.stringify(S)); scheduleSync(); }
+function persist(){ localStorage.setItem(LSKEY, JSON.stringify(S)); _L = null; scheduleSync(); }
 function saveSec(){ localStorage.setItem(SECKEY, JSON.stringify(SEC)); }
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function dkey(d){ const x = d||new Date(); return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"); }
@@ -186,45 +179,123 @@ function purgeWiped(){
   for(const k of Object.keys(S.days)) if((S.days[k].u||0) < w) delete S.days[k];
 }
 
-/* ───────────────────────── math ───────────────────────── */
+/* ─────────────── math: §0 daily settlement (see V2.4_PLAN.md) ─────────────── */
 const cfg = () => S.config;
 const consumed = r => (r.e||[]).reduce((a,x)=>a+x.k,0);
-const protein  = r => (r.e||[]).reduce((a,x)=>a+(x.p||0),0);
-const eff = r => r.cheat ? r.cheat.total : cfg().budget + (r.adj||0);
 const tracked = r => r && r.e && r.e.length > 0;
+// §13 snapshots: closed days are judged by the settings they were lived under.
+const dayBudget = r => (r && r.b) || cfg().budget;
+const dayCap = r => (r && r.c) || cfg().cap;
+const dayMaint = r => (r && r.m) || cfg().maintenance || 2400;
+function addDaysK(k, n){ const d = new Date(k+"T12:00"); d.setDate(d.getDate()+n); return dkey(d); }
 
-function bank(){
-  const today = dkey(); let b = 0;
-  for(const k of Object.keys(S.days)){
-    const r = S.days[k];
-    if(r.cheat) b -= r.cheat.bank || 0;
-    if(k >= today || !tracked(r)) continue;
-    const net = eff(r) - consumed(r);
-    b += net >= 0 ? Math.min(net, cfg().cap) : net;
-  }
-  return Math.round(b);
+// §3 repayment formula — constants 60% / 400 / 900 / 500, integer-exact.
+function schedule(D){
+  D = Math.round(D); if(D <= 0) return [];
+  const d1 = Math.min(D, Math.min(900, Math.max(400, Math.round(D*0.6))));
+  const R = D - d1; if(R <= 0) return [d1];
+  const n = Math.ceil(R/500), base = Math.floor(R/n);
+  const tail = Array(n).fill(base); tail[n-1] = R - base*(n-1);
+  return [d1, ...tail];
 }
+
+function closedDays(){ return Object.keys(S.days).filter(k => k < dkey() && tracked(S.days[k])).sort(); }
+
+// Single chronological replay; memoized per render (_L reset in render()).
+let _L = null;
+function ledger(){
+  if(_L) return _L;
+  const today = dkey(), keys = closedDays();
+  const deps = [], missDays = {}, trims = {};
+  let debt = 0, plan = [];
+  if(keys.length){
+    let k = keys[0];
+    while(k < today){
+      for(const d of deps) if(!d.dead && d.expires <= k){ d.left = 0; d.dead = true; }
+      const r = S.days[k];
+      const trim = plan.length ? plan[0] : 0;
+      if(trim) trims[k] = trim;
+      if(!tracked(r)){
+        // §3: unlogged mid-plan = miss; fresh schedule from the next day.
+        if(plan.length) plan = schedule(debt);
+        k = addDaysK(k, 1); continue;
+      }
+      if(plan.length) plan.shift();
+      const B = dayBudget(r), C = dayCap(r);
+      const sav = Math.round(B - consumed(r));
+      if(sav >= 0){
+        let pay = Math.min(sav, trim) + Math.min(Math.max(sav - trim, 0), C);
+        pay = Math.min(pay, debt);
+        debt -= pay;
+        if(debt === 0){
+          const allowanceLeft = Math.max(C - Math.max(pay - trim, 0), 0);
+          const dep = Math.min(Math.max(sav - pay, 0), allowanceLeft);
+          if(dep > 0) deps.push({ k, amt: dep, left: dep, expires: addDaysK(k, 10) });
+          plan = [];
+        } else if(sav < trim){
+          missDays[k] = true;                    // partial repayment counted, but a miss
+          plan = schedule(debt);
+        } else {
+          // trim resolved; good news shortens the schedule from the back
+          let sum = plan.reduce((a,x)=>a+x, 0);
+          while(sum > debt && plan.length){
+            const cut = Math.min(plan[plan.length-1], sum - debt);
+            plan[plan.length-1] -= cut; sum -= cut;
+            if(plan[plan.length-1] === 0) plan.pop();
+          }
+          if(debt > 0 && !plan.length) plan = schedule(debt);
+        }
+      } else {
+        let need = -sav;
+        for(const d of deps){ if(need <= 0) break; if(d.left <= 0) continue;
+          const take = Math.min(d.left, need); d.left -= take; need -= take; }
+        if(trim) missDays[k] = true;             // trim entirely unresolved
+        if(need > 0){ debt += need; plan = schedule(debt); }
+        else if(trim) plan = schedule(debt);
+      }
+      k = addDaysK(k, 1);
+    }
+    for(const d of deps) if(!d.dead && d.expires <= today){ d.left = 0; d.dead = true; }
+  }
+  _L = { deposits: deps.filter(d => !d.dead), debt: Math.round(debt),
+         bank: Math.round(deps.reduce((a,d)=>a+d.left,0)), missDays, trims,
+         todayTrim: plan.length ? plan[0] : 0, plan: plan.slice() };
+  return _L;
+}
+function bank(){ const L = ledger(); return L.debt > 0 ? -L.debt : L.bank; }
+function bankDisplay(){ const b = bank();
+  return { v: (b>=0?"+":"")+b.toLocaleString(), col: b<0 ? "var(--over)" : "var(--green)" }; }
+function targetToday(){ return cfg().budget - ledger().todayTrim; }
 function streak(){
-  let n = 0; const d = new Date(); d.setDate(d.getDate()-1);
+  const L = ledger(); let n = 0; const d = new Date(); d.setDate(d.getDate()-1);
   for(let i=0;i<400;i++){
-    const r = S.days[dkey(d)];
-    if(tracked(r) && consumed(r) <= eff(r)) { n++; d.setDate(d.getDate()-1); }
+    const k = dkey(d);
+    if(tracked(S.days[k]) && !L.missDays[k]) { n++; d.setDate(d.getDate()-1); }
     else break;
   }
-  const t = S.days[dkey()];
-  if(tracked(t) && consumed(t) <= eff(t)) n++;
   return n;
 }
+// §13: stamp settings-of-the-day onto unstamped closed days.
+function stampDays(){
+  let changed = false;
+  for(const k of closedDays()){
+    const r = S.days[k];
+    if(r.b === undefined){
+      r.b = cfg().budget; r.c = cfg().cap; r.g = cfg().goal ?? null;
+      r.m = cfg().maintenance || 2400; r.u = Date.now(); changed = true;
+    }
+  }
+  if(changed) persist();
+}
 function weekStart(k){ const d = new Date(k+"T12:00"); const wd = (d.getDay()+6)%7; d.setDate(d.getDate()-wd); return dkey(d); }
+// §16: weekly closes are physiological — vs snapshotted maintenance, never budget/trims.
 function weeklyCloses(){
   const wk = {};
-  const today = dkey();
-  for(const k of Object.keys(S.days)){
+  for(const k of closedDays()){
     const r = S.days[k];
-    if(!tracked(r) || k >= today) continue;
     const w = weekStart(k);
     wk[w] = wk[w] || { net:0, days:0 };
-    wk[w].net += eff(r) - consumed(r);
+    wk[w].net += dayMaint(r) - consumed(r);
     wk[w].days++;
   }
   return Object.entries(wk).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,8);
@@ -241,54 +312,26 @@ function weights(n){
   return out;
 }
 
-/* ───────────────────────── cheat planner ───────────────────────── */
-function planCheat(dateK, total){
-  const B = cfg().budget, extra = Math.max(0, total - B);
-  const avail = Math.max(bank(), 0);
-  const useBank = Math.min(avail, extra);
-  let rem = extra - useBank;
-  const maxCut = B - cfg().floor;
-  if(maxCut <= 0) return { err:"Your floor is at or above your budget — fix in Settings." };
-  const nDays = rem > 0 ? Math.ceil(rem / maxCut) : 0;
-  if(nDays > 14) return { err:`That's ${rem} kcal beyond bank + 14 days of headroom. Lower the total or bank more first.` };
-  const per = nDays ? Math.ceil(rem / nDays) : 0;
-  return { total, useBank, rem, nDays, per };
-}
-function lockCheat(dateK, plan){
-  const r = dayRec(dateK);
-  r.cheat = { total: plan.total, bank: plan.useBank };
-  let rem = plan.rem;
-  const d = new Date(dateK+"T12:00");
-  for(let i=0;i<plan.nDays;i++){
-    d.setDate(d.getDate()+1);
-    const k = dkey(d); const rr = dayRec(k);
-    const cut = Math.min(plan.per, rem);
-    rr.adj = (rr.adj||0) - cut; rr.u = Date.now();
-    rem -= cut;
-  }
-  r.u = Date.now(); persist();
-}
-
 /* ───────────────────────── LLM parse ───────────────────────── */
 async function llmParse(text){
   if(DEMO) return demoParse(text);
   if(!SEC.anthropic) throw new Error("No Claude API key yet — add it in Settings.");
-  const lib = S.foods.slice(0,300).map(f=>`${f.i}|${f.n}${f.a&&f.a.length?" ("+f.a.join(", ")+")":""}|per ${f.per==="item"?"item":f.per==="100ml"?"100 ml":"100 g"}|${f.k} kcal|${f.p} g protein`).join("\n");
+  const lib = S.foods.slice(0,300).map(f=>`${f.i}|${f.n}${f.a&&f.a.length?" ("+f.a.join(", ")+")":""}|per ${f.per==="item"?"item":f.per==="100ml"?"100 ml":"100 g"}|${f.k} kcal`).join("\n");
   const sys = `You convert casual food-diary text (often dictated, possibly German or English) into structured nutrition data.
 Rules:
 - Split the text into individual food items with quantities.
-- The user's saved foods are listed below with an id. If an item clearly matches one, set library_id to that id — the app recomputes kcal/protein from the library, so your numbers are only a fallback.
-- Otherwise estimate kcal and protein yourself using standard nutrition knowledge. kcal and protein_g must be TOTALS for the stated quantity.
+- The user's saved foods are listed below with an id. If an item clearly matches one, set library_id to that id — the app recomputes kcal from the library, so your numbers are only a fallback.
+- Otherwise estimate kcal yourself using standard nutrition knowledge. kcal must be the TOTAL for the stated quantity.
 - grams: your best estimate of the total weight in grams for the line (0 if it makes no sense). For drinks and liquids — especially library foods with a per-100 ml basis — report the volume in millilitres as grams (assume 1 ml ≈ 1 g).
 - unit: short label like "item", "g", "ml", "slice", "cup".
 - Keep names short and singular ("Cappuccino", not "two cappuccinos").
-User's saved foods (id|name|basis|kcal|protein):
+User's saved foods (id|name|basis|kcal):
 ${lib || "(none yet)"}`;
   const schema = { type:"object", additionalProperties:false, required:["items"], properties:{
     items:{ type:"array", items:{ type:"object", additionalProperties:false,
-      required:["name","qty","unit","grams","kcal","protein_g","library_id"],
+      required:["name","qty","unit","grams","kcal","library_id"],
       properties:{ name:{type:"string"}, qty:{type:"number"}, unit:{type:"string"},
-        grams:{type:"number"}, kcal:{type:"number"}, protein_g:{type:"number"},
+        grams:{type:"number"}, kcal:{type:"number"},
         library_id:{type:"string"} } } } } };
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method:"POST",
@@ -313,14 +356,14 @@ function findFood(id){ return S.foods.find(f=>f.i===id); }
 function enrich(items){
   return items.map(it=>{
     const f = it.library_id ? findFood(it.library_id) : null;
-    let k = Math.round(it.kcal), p = Math.round(it.protein_g*10)/10, src = "ai";
+    let k = Math.round(it.kcal), src = "ai";
     if(f){
       src = "lib";
-      if(f.per === "item"){ k = Math.round(f.k * it.qty); p = Math.round(f.p * it.qty * 10)/10; }
+      if(f.per === "item"){ k = Math.round(f.k * it.qty); }
       else { const g = it.grams > 0 ? it.grams : (f.g||100) * it.qty;
-             k = Math.round(f.k * g/100); p = Math.round(f.p * g/100 * 10)/10; }
+             k = Math.round(f.k * g/100); }
     }
-    return { name:it.name, qty:it.qty, unit:it.unit, grams:it.grams, k, p, src,
+    return { name:it.name, qty:it.qty, unit:it.unit, grams:it.grams, k, src,
              save: src==="ai" && !S.foods.some(x=>x.n.toLowerCase()===it.name.toLowerCase()) };
   });
 }
@@ -331,7 +374,7 @@ function ghUrl(){ return `https://api.github.com/repos/${SEC.repo}/contents/stat
 function ghHeaders(){ return { "Authorization":"Bearer "+SEC.github, "Accept":"application/vnd.github+json" }; }
 function setDot(cls, txt){ const d = document.getElementById("syncdot"); d.className = cls; d.textContent = txt; }
 
-const hasContent = d => !!(d && ((d.e && d.e.length) || d.w || d.cheat || d.adj));
+const hasContent = d => !!(d && ((d.e && d.e.length) || d.w));
 function mergeState(remote){
   if(!remote) return;
   if((remote.config?.u||0) > (S.config.u||0)) S.config = remote.config;
@@ -349,6 +392,8 @@ function mergeState(remote){
     if(!mine[f.i] || (f.u||0) > (mine[f.i].u||0)) mine[f.i] = f;
   S.foods = Object.values(mine);
   purgeWiped();
+  _L = null;
+  stampDays();
 }
 let lastSyncErr = null;
 async function pull(){
@@ -452,8 +497,9 @@ function ringSVG(frac, over){
   </svg>`;
 }
 function renderToday(){
-  const k = dkey(), r = dayRec(k), B = eff(r), c = consumed(r), pr = protein(r);
-  const left = B - c, over = left < 0, b = bank(), st = streak();
+  const k = dkey(), r = dayRec(k), c = consumed(r);
+  const trim = ledger().todayTrim, B = cfg().budget, T = B - trim;
+  const left = T - c, over = left < 0, st = streak();
   const needsSetup = !DEMO && (!SEC.anthropic || !SEC.github);
   const favs = S.foods.filter(f=>f.fav).slice(0,12);
   const dateStr = new Date().toLocaleDateString("en-GB",{ weekday:"long", day:"numeric", month:"long" });
@@ -461,15 +507,14 @@ function renderToday(){
   if(needsSetup) h += `<div class="banner"><b>Almost live.</b> Add your Claude API key ${SEC.github?"":"and GitHub token "}in <a href="#" onclick="go('settings');return false" style="color:var(--gold)">Settings</a> to unlock dictation parsing and cloud sync. Manual logging already works.</div>`;
   h += `<div class="card hero2">
     <div class="row spread" style="margin-bottom:10px">
-      <span class="sub">${dateStr}${r.cheat?' · <b style="color:var(--gold)">cheat day — locked</b>':""}${r.adj?` · financing ${r.adj} kcal`:""}</span>
+      <span class="sub">${dateStr}</span>
       <span class="streak">🔥 ${st} day${st===1?"":"s"}</span></div>
     <div class="row" style="gap:18px;align-items:center">
-      ${ringSVG(c/B, over)}
+      ${ringSVG(c/T, over)}
       <div style="flex:1;min-width:0">
         <div class="heronum2 ${over?"neg":""}">${Math.abs(Math.round(left)).toLocaleString()}</div>
-        <div class="sub num">${over?"kcal over":"kcal left"} · ${Math.round(c).toLocaleString()} of ${Math.round(B).toLocaleString()} eaten</div>
-        <div class="meter thin"><div style="width:${Math.min(100, pr/cfg().protein*100)}%"></div></div>
-        <div class="sub num" style="font-size:11.5px">protein ${Math.round(pr)} / ${cfg().protein} g</div>
+        <div class="sub num">${over?"kcal over":"kcal left"} · ${Math.round(c).toLocaleString()} of ${Math.round(T).toLocaleString()} eaten</div>
+        ${trim ? `<div class="sub num" style="font-size:11.5px;margin-top:3px">${T.toLocaleString()} = ${B.toLocaleString()} budget − ${trim.toLocaleString()} repayment</div>` : ""}
       </div>
     </div>
   </div>`;
@@ -482,26 +527,47 @@ function renderToday(){
   h += `<div class="card"><h3>Logged today · ${r.e.length} item${r.e.length===1?"":"s"}</h3>`;
   h += r.e.length ? r.e.map(e=>`<div class="entry" onclick="delEntry('${e.i}')">
       <span><span class="t">${e.t}</span><span class="n">${e.q>1?e.q+"× ":""}${esc(e.n)}</span></span>
-      <span><span class="k">${e.k}</span> <span class="p">kcal · ${e.p} g</span></span></div>`).join("")
+      <span><span class="k">${e.k}</span> <span class="sub">kcal</span></span></div>`).join("")
     : `<div class="sub">Nothing yet. Tell me what you ate.</div>`;
   h += `</div>`;
+  const bd = bankDisplay();
   h += `<div class="kpis">
-    <div class="kpi"><div class="l">Calorie bank</div><div class="v" style="color:${b<0?"var(--over)":"var(--green)"}">${b>=0?"+":""}${b.toLocaleString()}</div><div class="sub">${b<0?"in debt — auto-repaying":"banked from good days"}</div></div>
+    <div class="kpi" onclick="bankSheet()" style="cursor:pointer"><div class="l">Calorie bank</div><div class="v" style="color:${bd.col}">${bd.v}</div><div class="sub">${ledger().debt>0?"in debt — repaying":"tap for details"}</div></div>
     <div class="kpi"><div class="l">Weight today</div>
       <div class="row"><input id="win" type="number" inputmode="decimal" step="0.1" placeholder="${lastWeight()||"kg"}" value="${r.w||""}" style="width:84px;padding:6px 8px"><button class="ghost" onclick="saveWeight()">Save</button></div></div>
   </div>`;
-  h += `<button style="width:100%;color:var(--gold);border-color:var(--gold)" onclick="cheatSheet()">🎉 Plan a cheat day${b>0?` — bank covers ${b.toLocaleString()} kcal`:""}</button>`;
   return h;
+}
+/* §6 bank sheet: current composition only; rows sum exactly to the bank. */
+function bankSheet(){
+  const L = ledger(), today = dkey();
+  const daysTo = k => Math.round((new Date(k+"T12:00") - new Date(today+"T12:00")) / 86400000);
+  const rows = L.deposits.slice().sort((a,b)=>b.k.localeCompare(a.k)).map(d=>{
+    const inD = daysTo(d.expires);
+    const red = inD <= 2;
+    const date = new Date(d.k+"T12:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+    return `<div class="wkrow" ${red?'style="color:var(--over)"':""}>
+      <span class="num" style="font-weight:700">${d.left>0?"+":""}${d.left.toLocaleString()} <span class="sub" ${red?'style="color:var(--over)"':""}>of ${d.amt.toLocaleString()}</span></span>
+      <span class="sub" ${red?'style="color:var(--over)"':""}>earned ${date} · expires in ${inD} d</span></div>`;
+  }).join("");
+  const debtBlock = L.debt > 0 ? `<div class="card" style="border-color:var(--over)">
+      <div class="v num" style="font-size:24px;font-weight:800;color:var(--over)">−${L.debt.toLocaleString()}</div>
+      <div class="sub" style="margin-top:3px">repayment: ${L.plan.join(" / ")}</div>
+    </div>` : "";
+  sheet(`<h2>Calorie bank · ${bankDisplay().v}</h2>
+    ${debtBlock}
+    ${rows ? `<div class="card">${rows}</div>` : (L.debt>0 ? "" : `<div class="sub">No deposits yet — finish a day under budget and it lands here, good for 10 days.</div>`)}
+    <button style="width:100%;margin-top:10px" onclick="closeSheet()">Close</button>`);
 }
 function lastWeight(){ const w = weights(90); return w.length ? w[w.length-1][1] : null; }
 function saveWeight(){ const v = parseFloat($("#win").value); if(!v) return;
   const r = dayRec(dkey()); r.w = Math.round(v*10)/10; touch(dkey()); toast("Weight saved: "+r.w+" kg"); render(); }
 function quickLog(id){ const f = findFood(id); if(!f) return;
-  addEntries([{ name:f.n, qty:1, k: f.per==="item"?f.k:Math.round(f.k*(f.g||100)/100), p: f.per==="item"?f.p:Math.round(f.p*(f.g||100)/100*10)/10, src:"lib", save:false }]); }
+  addEntries([{ name:f.n, qty:1, k: f.per==="item"?f.k:Math.round(f.k*(f.g||100)/100), src:"lib", save:false }]); }
 function addEntries(items){
   const k = dkey(), r = dayRec(k);
   const added = items.map(it=>{
-    const e = { i:uid(), t:new Date().toTimeString().slice(0,5), n:it.name, q:it.qty||1, k:Math.round(it.k), p:Math.round((it.p||0)*10)/10 };
+    const e = { i:uid(), t:new Date().toTimeString().slice(0,5), n:it.name, q:it.qty||1, k:Math.round(it.k) };
     r.e.push(e); return e.i;
   });
   for(const it of items) if(it.save) saveToLibrary(it);
@@ -515,8 +581,8 @@ function saveToLibrary(it){
   if(S.foods.some(f=>f.n.toLowerCase()===it.name.toLowerCase())) return;
   const perItem = !(it.grams>0) || it.unit==="item" || (it.qty>=1 && it.unit!=="g" && it.unit!=="ml");
   const f = { i:uid(), n:it.name, a:[], fav:false, u:Date.now() };
-  if(perItem){ f.per="item"; f.k=Math.round(it.k/(it.qty||1)); f.p=Math.round((it.p||0)/(it.qty||1)*10)/10; }
-  else { f.per="100g"; f.k=Math.round(it.k*100/it.grams); f.p=Math.round((it.p||0)*100/it.grams*10)/10; f.g=Math.round(it.grams/(it.qty||1)); }
+  if(perItem){ f.per="item"; f.k=Math.round(it.k/(it.qty||1)); }
+  else { f.per = it.unit==="ml" ? "100ml" : "100g"; f.k=Math.round(it.k*100/it.grams); f.g=Math.round(it.grams/(it.qty||1)); }
   S.foods.push(f); persist();
 }
 function delEntry(id){
@@ -542,8 +608,7 @@ async function doParse(){
 function confirmSheet(){
   const items = pendingItems;
   const tot = items.reduce((a,x)=>a+Math.round(x.k),0);
-  const totP = Math.round(items.reduce((a,x)=>a+(x.p||0),0));
-  sheet(`<h2>Confirm · ${tot} kcal · ${totP} g protein</h2>
+  sheet(`<h2>Confirm · ${tot} kcal</h2>
     ${items.map((it,i)=>`<div class="sheet-item">
       <div class="row spread"><b>${esc(it.name)}</b>
         <span><span class="srcbadge ${it.src}">${it.src==="lib"?"your food":"Claude est."}</span>
@@ -551,7 +616,6 @@ function confirmSheet(){
       <div class="grid">
         <span><label>Qty</label><input type="number" inputmode="decimal" value="${it.qty}" onchange="pi(${i},'qty',this.value)"></span>
         <span><label>kcal</label><input type="number" inputmode="numeric" value="${Math.round(it.k)}" onchange="pi(${i},'k',this.value)"></span>
-        <span><label>Protein g</label><input type="number" inputmode="decimal" value="${it.p}" onchange="pi(${i},'p',this.value)"></span>
       </div>
       ${it.src==="ai"?`<label style="margin-top:8px"><input type="checkbox" style="width:auto;margin-right:6px" ${it.save?"checked":""} onchange="pendingItems[${i}].save=this.checked"> Save to my foods</label>`:""}
     </div>`).join("")}
@@ -564,47 +628,16 @@ function logPending(){ const it = pendingItems; closeSheet(); addEntries(it); }
 function manualSheet(){
   sheet(`<h2>Manual entry</h2>
     <label>Name</label><input id="mn" placeholder="Cappuccino">
-    <div class="row"><span style="flex:1"><label>kcal (total)</label><input id="mk" type="number" inputmode="numeric"></span>
-    <span style="flex:1"><label>Protein g</label><input id="mp" type="number" inputmode="decimal"></span></div>
+    <label>kcal (total)</label><input id="mk" type="number" inputmode="numeric">
     <label style="margin-top:10px"><input id="ms" type="checkbox" style="width:auto;margin-right:6px" checked> Save to my foods</label>
     <div class="row" style="margin-top:14px"><button class="primary" style="flex:1" onclick="manualLog()">Log</button>
     <button onclick="closeSheet()">Cancel</button></div>`);
 }
 function manualLog(){
-  const n = $("#mn").value.trim(), k = parseFloat($("#mk").value), p = parseFloat($("#mp").value)||0;
+  const n = $("#mn").value.trim(), k = parseFloat($("#mk").value);
   if(!n || !k) return;
   const save = $("#ms").checked; closeSheet();
-  addEntries([{ name:n, qty:1, k, p, unit:"item", grams:0, src:"ai", save }]);
-}
-
-/* ───────────────────────── cheat sheet ───────────────────────── */
-function cheatSheet(){
-  const d = new Date(); const dow = d.getDay(); const toSat = (6-dow+7)%7 || 7;
-  d.setDate(d.getDate()+toSat);
-  sheet(`<h2>Plan a cheat day</h2>
-    <div class="sub" style="margin-bottom:10px">Pick the day and how many calories it gets. The bank pays first; whatever's left is financed by trimming the following days — never below ${cfg().floor} kcal. Once locked, it's locked.</div>
-    <label>Date</label><input id="cd" type="date" value="${dkey(d)}" min="${dkey()}">
-    <label>Total calories that day</label><input id="ct" type="number" inputmode="numeric" value="3500" onchange="cheatPreview()" onkeyup="cheatPreview()">
-    <div class="card" id="cprev" style="margin-top:12px"></div>
-    <div class="row"><button class="primary" style="flex:1" onclick="cheatLock()">Lock it in</button>
-    <button onclick="closeSheet()">Cancel</button></div>`);
-  cheatPreview();
-}
-function cheatPreview(){
-  const t = parseInt($("#ct").value)||0; const p = planCheat($("#cd").value, t);
-  $("#cprev").innerHTML = p.err ? `<span style="color:var(--over)">${esc(p.err)}</span>` :
-    `<h3>The financing</h3>
-     <div class="sub" style="font-size:13.5px">
-     Budget that day: <b>${t.toLocaleString()} kcal</b><br>
-     ${p.useBank?`🏦 Bank pays <b>${p.useBank.toLocaleString()} kcal</b><br>`:""}
-     ${p.nDays?`📉 Next ${p.nDays} day${p.nDays===1?"":"s"} trimmed by <b>−${p.per} kcal</b> each`:p.useBank?"Fully covered by your bank. Nice.":"Within your normal budget."}
-     </div>`;
-  window._cheatPlan = p.err ? null : p;
-}
-function cheatLock(){
-  if(!window._cheatPlan) return;
-  const dk = $("#cd").value; lockCheat(dk, window._cheatPlan);
-  closeSheet(); toast("Cheat day locked for "+dk+" 🎉"); render();
+  addEntries([{ name:n, qty:1, k, unit:"item", grams:0, src:"ai", save }]);
 }
 
 /* ───────────────────────── Trends ───────────────────────── */
@@ -612,12 +645,25 @@ function chartWeight(n){
   const pts = weights(n); if(pts.length < 2) return `<div class="sub">Log your weight a few mornings and the trend appears here.</div>`;
   const sm = ema(pts);
   const W = 340, H = 150, P = 24;
-  const ys = pts.map(p=>p[1]).concat(cfg().goal?[cfg().goal]:[]);
+  // §13: stepped goal line from per-day snapshots, carrying the last known value forward.
+  let lastG = cfg().goal ?? null;
+  const goals = pts.map(([k])=>{ const r = S.days[k]; if(r && r.g !== undefined && r.g !== null) lastG = r.g; return lastG; });
+  const liveGoals = goals.filter(g=>g);
+  const ys = pts.map(p=>p[1]).concat(liveGoals);
   let lo = Math.min(...ys), hi = Math.max(...ys); const pad = Math.max((hi-lo)*0.15, 0.4); lo-=pad; hi+=pad;
   const X = i => P + i*(W-P-8)/(pts.length-1);
   const Y = v => H-16 - (v-lo)*(H-28)/(hi-lo);
   const line = sm.map((p,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(p[1]).toFixed(1)).join(" ");
-  const goal = cfg().goal ? `<line x1="${P}" x2="${W-8}" y1="${Y(cfg().goal)}" y2="${Y(cfg().goal)}" stroke="var(--gold)" stroke-dasharray="4 4" stroke-width="1"/><text x="${W-10}" y="${Y(cfg().goal)-4}" text-anchor="end" fill="var(--gold)">goal ${cfg().goal}</text>` : "";
+  let goal = "";
+  if(liveGoals.length){
+    let path = "", prev = null;
+    goals.forEach((g,i)=>{ if(!g) return;
+      if(prev === null) path += `M${X(i).toFixed(1)} ${Y(g).toFixed(1)}`;
+      else path += `L${X(i).toFixed(1)} ${Y(prev).toFixed(1)}` + (g!==prev?` L${X(i).toFixed(1)} ${Y(g).toFixed(1)}`:"");
+      prev = g; });
+    path += `L${(W-8).toFixed(1)} ${Y(prev).toFixed(1)}`;
+    goal = `<path d="${path}" fill="none" stroke="var(--gold)" stroke-dasharray="4 4" stroke-width="1"/><text x="${W-10}" y="${Y(prev)-4}" text-anchor="end" fill="var(--gold)">goal ${prev}</text>`;
+  }
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">
     <line x1="${P}" x2="${W-8}" y1="${H-16}" y2="${H-16}" stroke="var(--border)" />
     ${goal}
@@ -629,38 +675,47 @@ function chartWeight(n){
   </svg>`;
 }
 function chartCals(n){
+  const L = ledger(), today = dkey();
   const days = []; const d = new Date(); d.setDate(d.getDate()-n+1);
   for(let i=0;i<n;i++){ const k = dkey(d); days.push([k, S.days[k]]); d.setDate(d.getDate()+1); }
   const W = 340, H = 130, P = 6, bw = (W-2*P)/n - 3;
-  const B = cfg().budget;
-  const maxV = Math.max(B*1.3, ...days.map(([k,r])=>r?consumed(r):0));
+  // §13: per-day snapshotted budgets, carried forward across untracked gaps.
+  let lastB = cfg().budget;
+  const budgets = days.map(([k,r])=>{ if(k === today) return cfg().budget; if(r && r.b) lastB = r.b; return lastB; });
+  const maxV = Math.max(...budgets.map(b=>b*1.3), ...days.map(([k,r])=>r?consumed(r):0));
   const Y = v => H-18 - v*(H-34)/maxV;
+  const X = i => P + i*((W-2*P)/n);
   let bars = "";
   days.forEach(([k,r],i)=>{
     if(!tracked(r)) return;
-    const c = consumed(r), e = eff(r), x = P + i*((W-2*P)/n);
-    const col = r.cheat ? "var(--gold)" : c > e ? "var(--over)" : "var(--accent)";
-    bars += `<rect x="${x.toFixed(1)}" y="${Y(c).toFixed(1)}" width="${bw.toFixed(1)}" height="${(H-18-Y(c)).toFixed(1)}" rx="2.5" fill="${col}"><title>${k}: ${Math.round(c)} / ${Math.round(e)} kcal</title></rect>`;
-    if(r.cheat) bars += `<text x="${(x+bw/2).toFixed(1)}" y="${(Y(c)-4).toFixed(1)}" text-anchor="middle">🎉</text>`;
+    const c = consumed(r);
+    const t = (k === today ? cfg().budget - L.todayTrim : budgets[i] - (L.trims[k]||0));
+    const col = c > t ? "var(--over)" : "var(--accent)";
+    bars += `<rect x="${X(i).toFixed(1)}" y="${Y(c).toFixed(1)}" width="${bw.toFixed(1)}" height="${(H-18-Y(c)).toFixed(1)}" rx="2.5" fill="${col}"><title>${k}: ${Math.round(c)} / ${Math.round(t)} kcal</title></rect>`;
   });
+  // stepped budget line
+  let bpath = `M${P} ${Y(budgets[0]).toFixed(1)}`;
+  for(let i=1;i<n;i++){ bpath += `L${X(i).toFixed(1)} ${Y(budgets[i-1]).toFixed(1)}` + (budgets[i]!==budgets[i-1]?` L${X(i).toFixed(1)} ${Y(budgets[i]).toFixed(1)}`:""); }
+  bpath += `L${W-P} ${Y(budgets[n-1]).toFixed(1)}`;
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">
-    <line x1="${P}" x2="${W-P}" y1="${Y(B)}" y2="${Y(B)}" stroke="var(--muted)" stroke-dasharray="3 4" stroke-width="1"/>
-    <text x="${W-P}" y="${Y(B)-4}" text-anchor="end">budget ${B}</text>
+    <path d="${bpath}" fill="none" stroke="var(--muted)" stroke-dasharray="3 4" stroke-width="1"/>
+    <text x="${W-P}" y="${Y(budgets[n-1])-4}" text-anchor="end">budget ${budgets[n-1]}</text>
     ${bars}<line x1="${P}" x2="${W-P}" y1="${H-18}" y2="${H-18}" stroke="var(--border)"/>
     <text x="${P}" y="${H-4}">${days[0][0].slice(5)}</text><text x="${W-P}" y="${H-4}" text-anchor="end">today</text>
   </svg>`;
 }
 function renderTrends(){
-  const wc = weeklyCloses(); const b = bank();
+  const wc = weeklyCloses();
   const w = weights(90); const first = w[0], last = w[w.length-1];
   const delta = first && last && w.length>1 ? (ema(w)[w.length-1][1] - w[0][1]) : null;
+  const bd = bankDisplay();
   let h = `<div class="kpis">
     <div class="kpi"><div class="l">90-day trend</div><div class="v" style="color:${delta<0?"var(--ok)":"var(--ink)"}">${delta===null?"–":(delta>0?"+":"")+delta.toFixed(1)+" kg"}</div></div>
-    <div class="kpi"><div class="l">Calorie bank</div><div class="v" style="color:${b<0?"var(--over)":"var(--green)"}">${b>=0?"+":""}${b.toLocaleString()}</div></div>
+    <div class="kpi" onclick="bankSheet()" style="cursor:pointer"><div class="l">Calorie bank</div><div class="v" style="color:${bd.col}">${bd.v}</div></div>
   </div>`;
   h += `<div class="card"><h3>Weight — dots are mornings, line is the truth</h3>${chartWeight(90)}</div>`;
-  h += `<div class="card"><h3>Last 14 days vs budget</h3>${chartCals(14)}</div>`;
-  h += `<div class="card"><h3>Weekly closes</h3>`;
+  h += `<div class="card"><h3>Last 14 days vs target</h3>${chartCals(14)}</div>`;
+  h += `<div class="card"><h3>Weekly closes — vs maintenance</h3>`;
   h += wc.length ? wc.map(([wk,x])=>{
     const sign = x.net>=0 ? "−" : "+";
     return `<div class="wkrow"><span>Week of ${wk.slice(5)}</span>
@@ -682,7 +737,7 @@ function renderFoods(){
   h += foods.length ? foods.map(f=>`<div class="foodrow">
       <button class="star ${f.fav?"fav":""}" onclick="toggleFav('${f.i}')">★</button>
       <span style="flex:1" onclick="foodSheet('${f.i}')"><div style="font-size:15px">${esc(f.n)}</div>
-        <div class="sub">${f.k} kcal · ${f.p} g protein ${f.per==="item"?"per item":f.per==="100ml"?"per 100 ml":"per 100 g"}${f.a&&f.a.length?" · "+esc(f.a.join(", ")):""}</div></span>
+        <div class="sub">${f.k} kcal ${f.per==="item"?"per item":f.per==="100ml"?"per 100 ml":"per 100 g"}${f.a&&f.a.length?" · "+esc(f.a.join(", ")):""}</div></span>
       <span class="sub">›</span></div>`).join("")
     : `<div class="sub">Your personal foods live here — Claude's estimates never override them. Log something new and tick "Save to my foods", or add one manually. Starred foods become quick-log chips on Today.</div>`;
   h += `</div>`;
@@ -690,15 +745,14 @@ function renderFoods(){
 }
 function toggleFav(id){ const f = findFood(id); f.fav = !f.fav; f.u = Date.now(); persist(); render(); }
 function foodSheet(id){
-  const f = id ? findFood(id) : { n:"", a:[], per:"item", k:"", p:"", fav:false };
+  const f = id ? findFood(id) : { n:"", a:[], per:"item", k:"", fav:false };
   sheet(`<h2>${id?"Edit":"New"} food</h2>
     <label>Name</label><input id="fn" value="${esc(f.n)}">
     <label>Aliases (comma-separated — dictation nicknames)</label><input id="fa" value="${esc((f.a||[]).join(", "))}">
     <label>Basis</label><select id="fper"><option value="item" ${f.per==="item"?"selected":""}>Per item / serving</option>
       <option value="100g" ${f.per==="100g"?"selected":""}>Per 100 g</option>
       <option value="100ml" ${f.per==="100ml"?"selected":""}>Per 100 ml</option></select>
-    <div class="row"><span style="flex:1"><label>kcal</label><input id="fk" type="number" inputmode="numeric" value="${f.k}"></span>
-      <span style="flex:1"><label>Protein g</label><input id="fp" type="number" inputmode="decimal" value="${f.p}"></span></div>
+    <label>kcal</label><input id="fk" type="number" inputmode="numeric" value="${f.k}">
     <div class="row" style="margin-top:14px">
       <button class="primary" style="flex:1" onclick="foodSave('${id||""}')">Save</button>
       ${id?`<button class="danger" onclick="foodDel('${id}')">Delete</button>`:""}
@@ -707,7 +761,7 @@ function foodSheet(id){
 function foodSave(id){
   const n = $("#fn").value.trim(); if(!n) return;
   const data = { n, a:$("#fa").value.split(",").map(s=>s.trim()).filter(Boolean),
-    per:$("#fper").value, k:parseFloat($("#fk").value)||0, p:parseFloat($("#fp").value)||0, u:Date.now() };
+    per:$("#fper").value, k:parseFloat($("#fk").value)||0, u:Date.now() };
   if(id){ Object.assign(findFood(id), data); } else { S.foods.push({ i:uid(), fav:false, ...data }); }
   persist(); closeSheet(); render();
 }
@@ -719,12 +773,12 @@ function renderSettings(){
   return `
   <div class="card"><h3>Targets</h3>
     <label>Daily calorie budget</label><input id="s-budget" type="number" inputmode="numeric" value="${c.budget}">
-    <label>Daily protein target (g)</label><input id="s-protein" type="number" inputmode="numeric" value="${c.protein}">
+    <label>Maintenance — kcal/day your body burns</label><input id="s-maint" type="number" inputmode="numeric" value="${c.maintenance||2400}">
     <label>Goal weight (kg, optional)</label><input id="s-goal" type="number" inputmode="decimal" value="${c.goal||""}">
   </div>
   <div class="card"><h3>Bank rules</h3>
     <label>Max deposit per day (kcal under budget that counts)</label><input id="s-cap" type="number" inputmode="numeric" value="${c.cap}">
-    <label>Daily floor — financing never cuts below this</label><input id="s-floor" type="number" inputmode="numeric" value="${c.floor}">
+    <div class="sub" style="margin-top:6px">Deposits expire after 10 days.</div>
   </div>
   <div class="card"><h3>Connections</h3>
     <label>Claude API key <span style="color:${SEC.anthropic?"var(--ok)":"var(--over)"}">${SEC.anthropic?"● connected":"● missing"}</span></label>
@@ -748,10 +802,10 @@ function renderSettings(){
 function saveSettings(){
   const c = cfg();
   c.budget = parseInt($("#s-budget").value)||2000;
-  c.protein = parseInt($("#s-protein").value)||130;
+  c.maintenance = parseInt($("#s-maint").value)||2400;
   c.goal = parseFloat($("#s-goal").value)||null;
   c.cap = parseInt($("#s-cap").value)||300;
-  c.floor = parseInt($("#s-floor").value)||1500;
+  delete c.floor; delete c.protein;
   c.u = Date.now();
   SEC.anthropic = $("#s-anthropic").value.replace(/\s/g,"");
   SEC.model = $("#s-model").value;
@@ -779,43 +833,45 @@ function doImport(){
 /* ───────────────────────── demo ───────────────────────── */
 function demoSeed(s){
   const foods = [
-    ["Cappuccino","item",90,4.7,1],["Banana","item",105,1.3,1],["Egg","item",74,6.3,1],
-    ["Oats","100g",389,16.9,0],["Milk 3.5%","100g",64,3.4,0],["Olive oil","100g",884,0,0],
-    ["Chicken breast","100g",165,31,1],["Rye bread slice","item",83,2.7,0],["Skyr","100g",63,11,1]];
-  s.foods = foods.map(([n,per,k,p,fav])=>({ i:uid(), n, per, k, p, fav:!!fav, a:[], u:Date.now() }));
+    ["Cappuccino","item",90,1],["Banana","item",105,1],["Egg","item",74,1],
+    ["Oats","100g",389,0],["Milk 3.5%","100ml",64,0],["Olive oil","100g",884,0],
+    ["Chicken breast","100g",165,1],["Rye bread slice","item",83,0],["Orange juice","100ml",44,0]];
+  s.foods = foods.map(([n,per,k,fav])=>({ i:uid(), n, per, k, fav:!!fav, a:[], u:Date.now() }));
+  s.config.maintenance = 2400;
+  // Engineered to exercise every §0 path: expired deposits (i14–i12), a FIFO
+  // withdrawal (i11), red near-expiry deposits (i9, i8), a bank-covered feast
+  // (i6), and a debt feast (i1) leaving an active [450, 300] plan today.
+  const spec = { 14:1800, 13:1750, 12:1900, 11:2350, 10:1700, 9:1650, 8:1750,
+                 7:1900, 6:3000, 5:1800, 4:1850, 3:1900, 2:1750, 1:3600 };
   let w = 87.4;
-  for(let i=34;i>=0;i--){
+  for(let i=14;i>=1;i--){
     const d = new Date(); d.setDate(d.getDate()-i); const k = dkey(d);
-    const cheat = i===16;
-    const base = cheat ? 3400 : 1550 + Math.sin(i*1.7)*260 + (i%5===0?420:0);
+    const kcal = spec[i];
     const e = [];
-    let rem = base;
-    const parts = [["Breakfast",0.28],["Lunch",0.38],["Dinner",0.34]];
-    for(const [n,f] of parts){ const kc = Math.round(base*f); e.push({ i:uid(), t:"12:00", n, q:1, k:kc, p:Math.round(kc*0.05) }); }
-    w += (base-2000)/7700 + (Math.random()-0.5)*0.5;
-    s.days[k] = { e, w: i===3?undefined:Math.round(w*10)/10, u:Date.now() };
-    if(cheat) s.days[k].cheat = { total:3400, bank:900 };
+    for(const [n,f] of [["Breakfast",0.3],["Lunch",0.35],["Dinner",0.35]])
+      e.push({ i:uid(), t:"12:00", n, q:1, k:Math.round(kcal*f) });
+    w += (kcal-2400)/7700 + Math.sin(i*2.1)*0.12;
+    s.days[k] = { e, w:Math.round(w*10)/10, u:Date.now(), b:2000, c:300, g:80, m:2400 };
   }
-  const today = s.days[dkey()];
-  today.e = [ { i:uid(), t:"08:10", n:"Cappuccino", q:2, k:180, p:9 },
-              { i:uid(), t:"08:12", n:"Oats with milk", q:1, k:420, p:18 },
-              { i:uid(), t:"12:40", n:"Chicken salad", q:1, k:520, p:42 } ];
-  today.w = undefined;
+  s.days[dkey()] = { e:[ { i:uid(), t:"08:10", n:"Cappuccino", q:2, k:180 },
+                         { i:uid(), t:"08:12", n:"Oats with milk", q:1, k:420 } ], u:Date.now() };
 }
 async function demoParse(text){
   await new Promise(r=>setTimeout(r,700));
   return [
-    { name:"Cappuccino", qty:2, unit:"item", grams:0, kcal:220, protein_g:9, library_id:(S.foods.find(f=>f.n==="Cappuccino")||{}).i||"" },
-    { name:"Banana", qty:1, unit:"item", grams:120, kcal:105, protein_g:1.3, library_id:(S.foods.find(f=>f.n==="Banana")||{}).i||"" },
-    { name:"Currywurst", qty:1, unit:"item", grams:220, kcal:540, protein_g:21, library_id:"" }
+    { name:"Cappuccino", qty:2, unit:"item", grams:0, kcal:220, library_id:(S.foods.find(f=>f.n==="Cappuccino")||{}).i||"" },
+    { name:"Banana", qty:1, unit:"item", grams:120, kcal:105, library_id:(S.foods.find(f=>f.n==="Banana")||{}).i||"" },
+    { name:"Currywurst", qty:1, unit:"item", grams:220, kcal:540, library_id:"" }
   ];
 }
 
 /* ───────────────────────── boot ───────────────────────── */
 function render(){
+  _L = null;
   $("#main").innerHTML = { today:renderToday, trends:renderTrends, foods:renderFoods, settings:renderSettings }[view]();
 }
 purgeWiped();
+stampDays();
 go("today");
 if(ghReady()) pull(); else setDot("", DEMO ? "demo" : "local");
 if("serviceWorker" in navigator && !DEMO && location.protocol==="https:")
