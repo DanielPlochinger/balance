@@ -64,6 +64,15 @@ records + snapshots is derived — never persist ledger/plan state.
 - Demo mode: `?demo=1` — separate localStorage key, seeded data, stubbed LLM.
   Keep it working; it's how the app is tested without keys.
 
+## Data deletion policy (Daniel, 2026-08-15)
+
+When Daniel asks to delete data, he means **unrecoverable**: wipe the state
+AND rewrite `balance-data` git history (orphan commit, force push). Never
+retain old states "just in case" and never pitch git history as a recovery
+feature. The app is local-first — a wipe is only complete once every device
+has pulled the wipe signal and purged its local copy (purge is by DATE,
+v2.4.2). Keep food tombstones through a wipe until all devices have synced.
+
 ## Deploying
 
 Commit in this folder, push to `main` of `DanielPlochinger/balance`;
