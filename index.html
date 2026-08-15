@@ -148,7 +148,7 @@ nav button.on{color:var(--accent);background:var(--tint);font-weight:700;}
 
 <script>
 "use strict";
-const APP_VERSION = "2.4.1";
+const APP_VERSION = "2.4.2";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -176,7 +176,12 @@ function dayRec(k){ if(!S.days[k]) S.days[k] = { e:[], u:0 }; return S.days[k]; 
 function touch(k){ S.days[k].u = Date.now(); persist(); }
 function purgeWiped(){
   const w = S.config.wipedAt || 0; if(!w) return;
-  for(const k of Object.keys(S.days)) if((S.days[k].u||0) < w) delete S.days[k];
+  // Judge by DATE, not modification time: stamping/re-timestamping can never
+  // immunize a pre-wipe day (v2.4.2 fix). Same-day-as-wipe: only post-wipe
+  // writes survive.
+  const wd = dkey(new Date(w));
+  for(const k of Object.keys(S.days))
+    if(k < wd || (S.days[k].u||0) < w) delete S.days[k];
 }
 
 /* ─────────────── math: §0 daily settlement (see V2.4_PLAN.md) ─────────────── */
