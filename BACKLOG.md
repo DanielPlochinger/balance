@@ -1,9 +1,11 @@
 # Backlog (not version notes — just so nothing is forgotten)
 
 - Bottom sheets: inconsistencies, some interactions don't work (Daniel, Aug 8)
-- Foods tab possibly showing six foods / Beer twice (unconfirmed)
-- Deposit cap is 1000 (pre-wipe leftover) — keep or reset to 300?
-- Maintenance number not yet set (Settings shows default 2400)
+- Foods tab possibly showing six foods / Beer twice (unconfirmed — expected resolved by v2.5 migration)
 - Someday: derive maintenance from intake vs weight trend (parked)
-- Someday: server-side proxy for the Claude key (removes browser-direct header + key-per-device)
-- Someday: in-app "update available" prompt (kills the CACHE-bump / double-relaunch ritual)
+
+## Architecture maturity — sound for a single-user early version; revisit only if the tool grows
+
+- Server-side proxy for the Claude key (today: browser-direct calls, key per device)
+- In-app "update available" prompt (today: cache-bump + double-relaunch ritual)
+- Real backend/database (today: GitHub repo as single-truth store — principled at this scale)
