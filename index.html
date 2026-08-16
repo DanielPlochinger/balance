@@ -153,7 +153,7 @@ nav button.on{color:var(--accent);background:var(--tint);font-weight:700;}
 
 <script>
 "use strict";
-const APP_VERSION = "2.5.1";
+const APP_VERSION = "2.5.1.1";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -533,8 +533,24 @@ function renderToday(){
 }
 /* §1 (v2.5.1) historic day sheet: tap a calorie bar, get the day. */
 function daySheet(k){
-  const r = S.days[k]; if(!tracked(r)) return;
   const L = ledger(), today = dkey();
+  const r = S.days[k];
+  const tracked_ = tracked(r);
+  // 2.5.1.1 bounds: earliest logged day ←→ today
+  const loggedKeys = Object.keys(S.days).filter(x => tracked(S.days[x])).sort();
+  const minK = loggedKeys[0] || today;
+  const canPrev = k > minK, canNext = k < today;
+  const date = new Date(k+"T12:00").toLocaleDateString("en-GB",{ weekday:"long", day:"numeric", month:"long" });
+  const nav = `<div class="row spread" style="align-items:center">
+    <button class="ghost" style="font-size:22px;padding:2px 12px" ${canPrev?`onclick="daySheet('${addDaysK(k,-1)}')"`:"disabled"}>‹</button>
+    <h2 style="margin-bottom:0">${date}</h2>
+    <button class="ghost" style="font-size:22px;padding:2px 12px" ${canNext?`onclick="daySheet('${addDaysK(k,1)}')"`:"disabled"}>›</button>
+  </div>`;
+  if(!tracked_){
+    sheet(`${nav}<div class="sub" style="margin-top:12px">Nothing logged this day.</div>
+      <button style="width:100%;margin-top:14px" onclick="closeSheet()">Close</button>`);
+    return;
+  }
   const c = consumed(r);
   const T = k === today ? cfg().budget - L.todayTrim : dayBudget(r) - (L.trims[k]||0);
   const st = L.settle[k];
@@ -545,9 +561,8 @@ function daySheet(k){
     else if(st.repaid > 0) badge = `<span class="srcbadge lib">${st.repaid.toLocaleString()} repaid</span>`;
     else if(st.draw > 0) badge = `<span class="srcbadge ai">bank covered ${st.draw.toLocaleString()}</span>`;
   }
-  const date = new Date(k+"T12:00").toLocaleDateString("en-GB",{ weekday:"long", day:"numeric", month:"long" });
-  sheet(`<h2>${date}</h2>
-    <div class="row spread" style="margin-bottom:10px">
+  sheet(`${nav}
+    <div class="row spread" style="margin:10px 0">
       <span class="sub num">eaten ${Math.round(c).toLocaleString()} of ${Math.round(T).toLocaleString()}</span>${badge}</div>
     <div class="card">${r.e.map(e=>`<div class="entry"><span><span class="t">${e.t}</span><span class="n">${e.q>1?e.q+"× ":""}${esc(e.n)}</span></span><span><span class="k" ${e.k<0?'style="color:var(--blue)"':""}>${e.k}</span> <span class="sub">kcal</span></span></div>`).join("")}</div>
     ${r.w?`<div class="sub">Weight ${r.w} kg</div>`:""}
