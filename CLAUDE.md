@@ -59,7 +59,9 @@ records + snapshots is derived — never persist ledger/plan state.
 - Light and dark themes via CSS custom properties; both must stay legible.
 - No browser-native `alert`/`confirm`/`prompt` — the bottom-sheet (`sheet()`)
   is the only modal.
-- Weight trend: raw dots + EMA (α=0.3) line; the line is "the truth".
+- Weight trend: raw dots + EMA (α=0.3) line.
+- Charts: numbers appear only for truths (entered values, goals); trend lines
+  are purely visual — direction and rate, never labeled. No axis-bound labels.
 - Weekly close: net kcal vs budget ≈ kg at 7700 kcal/kg; deficit shown as −.
 - Demo mode: `?demo=1` — separate localStorage key, seeded data, stubbed LLM.
   Keep it working; it's how the app is tested without keys.
@@ -69,7 +71,11 @@ records + snapshots is derived — never persist ledger/plan state.
 Every version gets its own plan document (`V<version>_PLAN.md`), created in
 three stages: big picture first, then details honed with Daniel, then a single
 execution pass once he approves. The plan docs stay in this folder forever as
-the inventory of what each version changed. **Never invent a new version
+the inventory of what each version changed.
+Doc standard: written for an implementer with no chat context — the doc alone
+must suffice to build faithfully. Imperative bullets for the what; a one-line
+intent note wherever intent constrains an ambiguous implementation choice;
+never conversational back-and-forth. V2.4_PLAN.md is the reference example. **Never invent a new version
 number or create a new plan document without asking Daniel first.** This
 applies to bugfix patches (x.y.Z) too: their docs capture the troubleshooting
 back-and-forth (symptom → diagnosis → fix) before anything is executed.
