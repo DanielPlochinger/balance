@@ -10,7 +10,6 @@ home screen and it runs standalone, offline included.
   from the browser. Personal food library overrides the model's estimates.
 - **Keys**: Claude API key and GitHub token are entered in the app's Settings
   and stored only in that device's localStorage — never in this repo.
-- **Mechanics and changelog**: see `V*_PLAN.md` — one plan doc per version.
 
 Local preview: `python3 -m http.server 8899`, then open
 `http://localhost:8899/index.html?demo=1` (demo mode: seeded data, stubbed
