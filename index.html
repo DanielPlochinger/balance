@@ -153,7 +153,7 @@ nav button.on{color:var(--accent);background:var(--tint);font-weight:700;}
 
 <script>
 "use strict";
-const APP_VERSION = "2.5.0";
+const APP_VERSION = "2.5.1";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -206,7 +206,7 @@ let _L = null;
 function ledger(){
   if(_L) return _L;
   const today = dkey(), keys = closedDays();
-  const deps = [], missDays = {}, trims = {};
+  const deps = [], missDays = {}, trims = {}, settle = {};
   let debt = 0, plan = [];
   if(keys.length){
     let k = keys[0];
@@ -227,10 +227,11 @@ function ledger(){
         let pay = Math.min(sav, trim) + Math.min(Math.max(sav - trim, 0), C);
         pay = Math.min(pay, debt);
         debt -= pay;
+        settle[k] = { dep: 0, repaid: pay, draw: 0, debtAdd: 0 };
         if(debt === 0){
           const allowanceLeft = Math.max(C - Math.max(pay - trim, 0), 0);
           const dep = Math.min(Math.max(sav - pay, 0), allowanceLeft);
-          if(dep > 0) deps.push({ k, amt: dep, left: dep, expires: addDaysK(k, 10) });
+          if(dep > 0){ deps.push({ k, amt: dep, left: dep, expires: addDaysK(k, 10) }); settle[k].dep = dep; }
           plan = [];
         } else if(sav < trim){
           missDays[k] = true;                    // partial repayment counted, but a miss
@@ -246,9 +247,10 @@ function ledger(){
           if(debt > 0 && !plan.length) plan = schedule(debt);
         }
       } else {
-        let need = -sav;
+        let need = -sav, used = 0;
         for(const d of deps){ if(need <= 0) break; if(d.left <= 0) continue;
-          const take = Math.min(d.left, need); d.left -= take; need -= take; }
+          const take = Math.min(d.left, need); d.left -= take; need -= take; used += take; }
+        settle[k] = { dep: 0, repaid: 0, draw: used, debtAdd: Math.max(need, 0) };
         if(trim) missDays[k] = true;             // trim entirely unresolved
         if(need > 0){ debt += need; plan = schedule(debt); }
         else if(trim) plan = schedule(debt);
@@ -258,7 +260,7 @@ function ledger(){
     for(const d of deps) if(!d.dead && d.expires <= today){ d.left = 0; d.dead = true; }
   }
   _L = { deposits: deps.filter(d => !d.dead), debt: Math.round(debt),
-         bank: Math.round(deps.reduce((a,d)=>a+d.left,0)), missDays, trims,
+         bank: Math.round(deps.reduce((a,d)=>a+d.left,0)), missDays, trims, settle,
          todayTrim: plan.length ? plan[0] : 0, plan: plan.slice() };
   return _L;
 }
@@ -523,11 +525,33 @@ function renderToday(){
   h += `<div class="kpis">
     <div class="kpi" onclick="bankSheet()" style="cursor:pointer"><div class="l">Calorie bank</div><div class="v" style="color:${bd.col}">${bd.v}</div><div class="sub">${ledger().debt>0?"in debt — repaying":"tap for details"}</div></div>
     <div class="kpi"><div class="l">Weight</div>
-      <div class="row"><input id="win" type="number" inputmode="decimal" step="0.1" placeholder="kg" value="${lastWeight()||""}" style="width:84px;padding:6px 8px;color:var(--muted)"
-        oninput="this.style.color='var(--ink)';document.getElementById('wsave').disabled=false">
+      <div class="row"><input id="win" type="number" inputmode="decimal" step="0.1" placeholder="${lastWeight()||"kg"}" style="width:84px;padding:6px 8px"
+        oninput="document.getElementById('wsave').disabled=!this.value">
       <button id="wsave" class="ghost" disabled onclick="saveWeight()">Save</button></div></div>
   </div>`;
   return h;
+}
+/* §1 (v2.5.1) historic day sheet: tap a calorie bar, get the day. */
+function daySheet(k){
+  const r = S.days[k]; if(!tracked(r)) return;
+  const L = ledger(), today = dkey();
+  const c = consumed(r);
+  const T = k === today ? cfg().budget - L.todayTrim : dayBudget(r) - (L.trims[k]||0);
+  const st = L.settle[k];
+  let badge = "";
+  if(k !== today && st){
+    if(st.debtAdd > 0) badge = `<span class="srcbadge" style="background:color-mix(in srgb,var(--over) 12%,#fff);color:var(--over)">−${st.debtAdd.toLocaleString()} debt</span>`;
+    else if(st.dep > 0) badge = `<span class="srcbadge lib">+${st.dep.toLocaleString()} banked</span>`;
+    else if(st.repaid > 0) badge = `<span class="srcbadge lib">${st.repaid.toLocaleString()} repaid</span>`;
+    else if(st.draw > 0) badge = `<span class="srcbadge ai">bank covered ${st.draw.toLocaleString()}</span>`;
+  }
+  const date = new Date(k+"T12:00").toLocaleDateString("en-GB",{ weekday:"long", day:"numeric", month:"long" });
+  sheet(`<h2>${date}</h2>
+    <div class="row spread" style="margin-bottom:10px">
+      <span class="sub num">eaten ${Math.round(c).toLocaleString()} of ${Math.round(T).toLocaleString()}</span>${badge}</div>
+    <div class="card">${r.e.map(e=>`<div class="entry"><span><span class="t">${e.t}</span><span class="n">${e.q>1?e.q+"× ":""}${esc(e.n)}</span></span><span><span class="k" ${e.k<0?'style="color:var(--blue)"':""}>${e.k}</span> <span class="sub">kcal</span></span></div>`).join("")}</div>
+    ${r.w?`<div class="sub">Weight ${r.w} kg</div>`:""}
+    <button style="width:100%;margin-top:12px" onclick="closeSheet()">Close</button>`);
 }
 /* §6 bank sheet: current composition only; rows sum exactly to the bank. */
 function bankSheet(){
@@ -707,8 +731,7 @@ function chartCals(n){
     const col = c > t ? "var(--over)" : "var(--accent)";
     const cSafe = Math.max(c, 0);
     const h = Math.max(H-18-Y(cSafe), 2);
-    const label = `${new Date(k+"T12:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"})} · ${Math.round(c).toLocaleString()}`;
-    bars += `<rect x="${X(i).toFixed(1)}" y="${(H-18-h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2.5" fill="${col}" onclick="showChip(event,'${label}')"/>`;
+    bars += `<rect x="${X(i).toFixed(1)}" y="${(H-18-h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2.5" fill="${col}" onclick="event.stopPropagation();daySheet('${k}')"/>`;
   });
   // stepped budget line
   let bpath = `M${P} ${Y(budgets[0]).toFixed(1)}`;
