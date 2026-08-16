@@ -99,10 +99,15 @@ nav button.on{color:var(--accent);background:var(--tint);font-weight:700;}
 #overlay{position:fixed;inset:0;background:rgba(15,18,22,.4);z-index:60;display:none;
   align-items:flex-end;justify-content:center;}
 #overlay.show{display:flex;}
-#sheet{background:var(--bg);width:100%;max-width:480px;max-height:88dvh;overflow-y:auto;
-  border-radius:26px 26px 0 0;padding:10px 16px calc(22px + env(safe-area-inset-bottom));}
-#sheet::before{content:"";display:block;width:38px;height:5px;border-radius:3px;
-  background:var(--tonal2);margin:0 auto 14px;}
+#sheet.tall{min-height:60dvh;}
+#sheet{background:var(--bg);width:100%;max-width:480px;max-height:88dvh;
+  border-radius:26px 26px 0 0;display:flex;flex-direction:column;overflow:hidden;}
+#sheetbody{overflow-y:auto;padding:22px 16px 14px;flex:1;}
+#sheetfoot{display:flex;gap:10px;padding:10px 16px calc(14px + env(safe-area-inset-bottom));
+  background:var(--bg);transition:box-shadow .2s ease;}
+#sheetfoot.edge{box-shadow:0 -8px 20px rgba(20,26,34,.09);}
+#sheetfoot button{flex:1;padding:13px 16px;font-size:15.5px;}
+#sheetfoot button.primary{padding:13px 16px;font-size:15.5px;}
 #sheet h2{font-size:21px;font-weight:800;letter-spacing:-.02em;margin-bottom:12px;}
 .sheet-item{background:var(--surface);border:0.5px solid var(--border);border-radius:16px;
   padding:12px 14px;margin-bottom:9px;box-shadow:var(--shadow);}
@@ -147,13 +152,13 @@ nav button.on{color:var(--accent);background:var(--tint);font-weight:700;}
   <button id="tab-settings" onclick="go('settings')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>Settings</button>
 </nav>
 
-<div id="overlay" onclick="if(event.target===this)closeSheet()"><div id="sheet"></div></div>
+<div id="overlay" onclick="if(event.target===this && !_modalSheet)closeSheet()"><div id="sheet"><div id="sheetbody"></div><div id="sheetfoot"></div></div></div>
 <div id="toast"></div>
 <div id="chip"></div>
 
 <script>
 "use strict";
-const APP_VERSION = "2.5.1.1";
+const APP_VERSION = "2.5.2";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -306,7 +311,7 @@ function weights(n){
 async function llmParse(text){
   if(DEMO) return demoParse(text);
   if(!SEC.anthropic) throw new Error("No Claude API key yet — add it in Settings.");
-  const lib = S.foods.slice(0,300).map(f=>`${f.i}|${f.n}${f.a&&f.a.length?" ("+f.a.join(", ")+")":""}|per ${f.per==="item"?"item":f.per==="100ml"?"100 ml":"100 g"}|${f.k} kcal`).join("\n");
+  const lib = S.foods.slice(0,300).map(f=>`${f.i}|${f.n}|per ${f.per==="item"?"item":f.per==="100ml"?"100 ml":"100 g"}|${f.k} kcal`).join("\n");
   const sys = `You convert casual food-diary text (often dictated, possibly German or English) into structured nutrition data.
 Rules:
 - Split the text into individual food items with quantities.
@@ -461,8 +466,25 @@ function toast(msg, undo){
   if(undo) $("#undobtn").onclick = ()=>{ undo(); t.style.display = "none"; render(); };
   clearTimeout(t._h); t._h = setTimeout(()=>t.style.display="none", 4000);
 }
-function sheet(html){ $("#sheet").innerHTML = html; $("#overlay").classList.add("show"); }
-function closeSheet(){ $("#overlay").classList.remove("show"); pendingItems = null; }
+let _modalSheet = false;
+/* One sheet component (V2.5.2 §5): scrolling body + pinned footer.
+   opts: tall (fixed 60% floor), modal (no outside-tap dismiss), footer (button bar HTML). */
+function sheet(html, opts = {}){
+  $("#sheetbody").innerHTML = html;
+  const f = $("#sheetfoot");
+  f.innerHTML = opts.footer || "";
+  f.style.display = opts.footer ? "flex" : "none";
+  $("#sheet").classList.toggle("tall", !!opts.tall);
+  _modalSheet = !!opts.modal;
+  $("#overlay").classList.add("show");
+  requestAnimationFrame(updateSheetEdge);
+}
+function updateSheetEdge(){
+  const b = $("#sheetbody"), f = $("#sheetfoot");
+  const under = b.scrollHeight - b.scrollTop - b.clientHeight > 1;
+  f.classList.toggle("edge", under && f.style.display !== "none");
+}
+function closeSheet(){ $("#overlay").classList.remove("show"); _modalSheet = false; pendingItems = null; }
 /* shared tap-chip for chart values (weight dots + calorie bars) */
 function showChip(ev, text){
   ev.stopPropagation();
@@ -541,14 +563,15 @@ function daySheet(k){
   const minK = loggedKeys[0] || today;
   const canPrev = k > minK, canNext = k < today;
   const date = new Date(k+"T12:00").toLocaleDateString("en-GB",{ weekday:"long", day:"numeric", month:"long" });
+  const arrowStyle = "font-size:22px;padding:2px 12px;line-height:1;color:var(--muted);display:flex;align-items:center;transform:translateY(-1px)";
   const nav = `<div class="row spread" style="align-items:center">
-    <button class="ghost" style="font-size:22px;padding:2px 12px" ${canPrev?`onclick="daySheet('${addDaysK(k,-1)}')"`:"disabled"}>‹</button>
+    <button class="ghost" style="${arrowStyle}" ${canPrev?`onclick="daySheet('${addDaysK(k,-1)}')"`:"disabled"}>‹</button>
     <h2 style="margin-bottom:0">${date}</h2>
-    <button class="ghost" style="font-size:22px;padding:2px 12px" ${canNext?`onclick="daySheet('${addDaysK(k,1)}')"`:"disabled"}>›</button>
+    <button class="ghost" style="${arrowStyle}" ${canNext?`onclick="daySheet('${addDaysK(k,1)}')"`:"disabled"}>›</button>
   </div>`;
   if(!tracked_){
-    sheet(`${nav}<div class="sub" style="margin-top:12px">Nothing logged this day.</div>
-      <button style="width:100%;margin-top:14px" onclick="closeSheet()">Close</button>`);
+    sheet(`${nav}<div class="sub" style="margin-top:12px">Nothing logged this day.</div>`,
+      { tall:true, footer:`<button style="flex:1" onclick="closeSheet()">Close</button>` });
     return;
   }
   const c = consumed(r);
@@ -565,8 +588,8 @@ function daySheet(k){
     <div class="row spread" style="margin:10px 0">
       <span class="sub num">eaten ${Math.round(c).toLocaleString()} of ${Math.round(T).toLocaleString()}</span>${badge}</div>
     <div class="card">${r.e.map(e=>`<div class="entry"><span><span class="t">${e.t}</span><span class="n">${e.q>1?e.q+"× ":""}${esc(e.n)}</span></span><span><span class="k" ${e.k<0?'style="color:var(--blue)"':""}>${e.k}</span> <span class="sub">kcal</span></span></div>`).join("")}</div>
-    ${r.w?`<div class="sub">Weight ${r.w} kg</div>`:""}
-    <button style="width:100%;margin-top:12px" onclick="closeSheet()">Close</button>`);
+    ${r.w?`<div class="sub">Weight ${r.w} kg</div>`:""}`,
+    { tall:true, footer:`<button style="flex:1" onclick="closeSheet()">Close</button>` });
 }
 /* §6 bank sheet: current composition only; rows sum exactly to the bank. */
 function bankSheet(){
@@ -586,8 +609,8 @@ function bankSheet(){
     </div>` : "";
   sheet(`<h2>Calorie bank · ${bankDisplay().v}</h2>
     ${debtBlock}
-    ${rows ? `<div class="card">${rows}</div>` : (L.debt>0 ? "" : `<div class="sub">No deposits yet — finish a day under budget and it lands here, good for 10 days.</div>`)}
-    <button style="width:100%;margin-top:10px" onclick="closeSheet()">Close</button>`);
+    ${rows ? `<div class="card">${rows}</div>` : (L.debt>0 ? "" : `<div class="sub">No deposits yet — finish a day under budget and it lands here, good for 10 days.</div>`)}`,
+    { footer: `<button style="flex:1" onclick="closeSheet()">Close</button>` });
 }
 function lastWeight(){ const w = weights(90); return w.length ? w[w.length-1][1] : null; }
 function saveWeight(){
@@ -624,9 +647,9 @@ function saveFoodTo(st, it){
 }
 function delEntry(id){
   const r = dayRec(dkey()); const e = r.e.find(x=>x.i===id); if(!e) return;
-  sheet(`<h2>Remove entry?</h2><div class="card"><b>${esc(e.n)}</b> — ${e.k} kcal</div>
-    <div class="row"><button class="danger" style="flex:1" onclick="reallyDel('${id}')">Remove</button>
-    <button style="flex:1" onclick="closeSheet()">Keep</button></div>`);
+  sheet(`<h2>Remove entry?</h2><div class="card"><b>${esc(e.n)}</b> — ${e.k} kcal</div>`,
+    { footer: `<button style="flex:1" onclick="closeSheet()">Cancel</button>
+      <button class="danger" style="flex:1" onclick="reallyDel('${id}')">Remove</button>` });
 }
 function reallyDel(id){
   const k = dkey(); closeSheet();
@@ -637,13 +660,13 @@ async function doParse(){
   if(isOffline()){ toast("Offline — logging needs a connection"); return; }
   const text = $("#foodtext").value.trim(); if(!text) return;
   const btn = document.querySelector("#parserow + .row .primary") || document.activeElement;
-  sheet(`<h2>Parsing…</h2><div class="sub">Claude is reading your meal.</div>`);
+  sheet(`<h2>Parsing…</h2><div class="sub">Claude is reading your meal.</div>`, { modal:true });
   try{
     const items = enrich(await llmParse(text));
-    if(!items.length){ sheet(`<h2>Hmm</h2><div class="sub">Couldn't find any food in that. Try again?</div><button style="margin-top:12px;width:100%" onclick="closeSheet()">Close</button>`); return; }
+    if(!items.length){ sheet(`<h2>Hmm</h2><div class="sub">Couldn't find any food in that. Try again?</div>`, { footer:`<button style="flex:1" onclick="closeSheet()">Close</button>` }); return; }
     pendingItems = items; confirmSheet();
   }catch(e){
-    sheet(`<h2>Parse failed</h2><div class="sub">${esc(e.message)}</div><button style="margin-top:12px;width:100%" onclick="closeSheet()">Close</button>`);
+    sheet(`<h2>Parse failed</h2><div class="sub">${esc(e.message)}</div>`, { footer:`<button style="flex:1" onclick="closeSheet()">Close</button>` });
   }
 }
 function confirmSheet(){
@@ -659,10 +682,9 @@ function confirmSheet(){
         <span><label>kcal</label><input type="number" inputmode="numeric" value="${Math.round(it.k)}" onchange="pi(${i},'k',this.value)"></span>
       </div>
       ${it.src==="ai"?`<label style="margin-top:8px"><input type="checkbox" style="width:auto;margin-right:6px" ${it.save?"checked":""} onchange="pendingItems[${i}].save=this.checked"> Save to my foods</label>`:""}
-    </div>`).join("")}
-    <div class="row" style="margin-top:12px">
-      <button class="primary" style="flex:1" onclick="logPending()">Log ${items.length} item${items.length===1?"":"s"}</button>
-      <button onclick="closeSheet()">Cancel</button></div>`);
+    </div>`).join("")}`,
+    { modal:true, footer: `<button onclick="closeSheet()">Cancel</button>
+      <button class="primary" style="flex:1" onclick="logPending()">Log ${items.length} item${items.length===1?"":"s"}</button>` });
 }
 function pi(i, field, val){ pendingItems[i][field] = parseFloat(val)||0; }
 function logPending(){ const it = pendingItems; closeSheet(); addEntries(it); }
@@ -670,9 +692,9 @@ function manualSheet(){
   sheet(`<h2>Manual entry</h2>
     <label>Name</label><input id="mn" placeholder="Cappuccino">
     <label>kcal (total)</label><input id="mk" type="number" inputmode="numeric">
-    <label style="margin-top:10px"><input id="ms" type="checkbox" style="width:auto;margin-right:6px"> Save to my foods</label>
-    <div class="row" style="margin-top:14px"><button class="primary" style="flex:1" onclick="manualLog()">Log</button>
-    <button onclick="closeSheet()">Cancel</button></div>`);
+    <label style="margin-top:10px"><input id="ms" type="checkbox" style="width:auto;margin-right:6px"> Save to my foods</label>`,
+    { modal:true, footer: `<button onclick="closeSheet()">Cancel</button>
+    <button class="primary" style="flex:1" onclick="manualLog()">Log</button>` });
 }
 function manualLog(){
   const n = $("#mn").value.trim(), k = parseFloat($("#mk").value);
@@ -783,7 +805,7 @@ function renderTrends(){
 /* ───────────────────────── Foods ───────────────────────── */
 function renderFoods(){
   const q = (window._fq||"").toLowerCase();
-  const foods = S.foods.filter(f=>!q || f.n.toLowerCase().includes(q) || (f.a||[]).some(a=>a.toLowerCase().includes(q)))
+  const foods = S.foods.filter(f=>!q || f.n.toLowerCase().includes(q))
                        .sort((a,b)=>(b.fav?1:0)-(a.fav?1:0) || a.n.localeCompare(b.n));
   let h = `<div class="row" style="margin-bottom:10px">
     <input placeholder="Search foods…" value="${esc(window._fq||"")}" oninput="window._fq=this.value;render()">
@@ -792,7 +814,7 @@ function renderFoods(){
   h += foods.length ? foods.map(f=>`<div class="foodrow">
       <button class="star ${f.fav?"fav":""}" onclick="toggleFav('${f.i}')">★</button>
       <span style="flex:1" onclick="foodSheet('${f.i}')"><div style="font-size:15px">${esc(f.n)}</div>
-        <div class="sub">${f.k} kcal ${f.per==="item"?"per item":f.per==="100ml"?"per 100 ml":"per 100 g"}${f.a&&f.a.length?" · "+esc(f.a.join(", ")):""}</div></span>
+        <div class="sub">${f.k} kcal ${f.per==="item"?"per item":f.per==="100ml"?"per 100 ml":"per 100 g"}</div></span>
       <span class="sub">›</span></div>`).join("")
     : `<div class="sub">Your personal foods live here — Claude's estimates never override them. Log something new and tick "Save to my foods", or add one manually. Starred foods become quick-log chips on Today.</div>`;
   h += `</div>`;
@@ -802,23 +824,26 @@ function toggleFav(id){
   write(st => { const f = st.foods.find(x => x.i === id); if(f){ f.fav = !f.fav; f.u = Date.now(); } }, "star food");
 }
 function foodSheet(id){
-  const f = id ? findFood(id) : { n:"", a:[], per:"item", k:"", fav:false };
+  const f = id ? findFood(id) : { n:"", per:"item", k:"", fav:false };
   sheet(`<h2>${id?"Edit":"New"} food</h2>
     <label>Name</label><input id="fn" value="${esc(f.n)}">
-    <label>Aliases (comma-separated — dictation nicknames)</label><input id="fa" value="${esc((f.a||[]).join(", "))}">
     <label>Basis</label><select id="fper"><option value="item" ${f.per==="item"?"selected":""}>Per item / serving</option>
       <option value="100g" ${f.per==="100g"?"selected":""}>Per 100 g</option>
       <option value="100ml" ${f.per==="100ml"?"selected":""}>Per 100 ml</option></select>
     <label>kcal</label><input id="fk" type="number" inputmode="numeric" value="${f.k}">
-    <div class="row" style="margin-top:14px">
-      <button class="primary" style="flex:1" onclick="foodSave('${id||""}')">Save</button>
-      ${id?`<button class="danger" onclick="foodDel('${id}')">Delete</button>`:""}
-      <button onclick="closeSheet()">Cancel</button></div>`);
+    ${id?`<button class="ghost danger" style="margin-top:16px;padding:0" onclick="foodDelConfirm('${id}')">Delete food</button>`:""}`,
+    { modal:true, footer: `<button onclick="closeSheet()">Cancel</button>
+      <button class="primary" style="flex:1" onclick="foodSave('${id||""}')">Save</button>` });
+}
+function foodDelConfirm(id){
+  const f = findFood(id); if(!f) return;
+  sheet(`<h2>Delete food?</h2><div class="card"><b>${esc(f.n)}</b> — ${f.k} kcal ${f.per==="item"?"per item":"per 100 "+(f.per==="100ml"?"ml":"g")}</div>`,
+    { footer: `<button style="flex:1" onclick="closeSheet()">Cancel</button>
+      <button class="danger" style="flex:1" onclick="foodDel('${id}')">Delete</button>` });
 }
 function foodSave(id){
   const n = $("#fn").value.trim(); if(!n) return;
-  const data = { n, a:$("#fa").value.split(",").map(s=>s.trim()).filter(Boolean),
-    per:$("#fper").value, k:parseFloat($("#fk").value)||0, u:Date.now() };
+  const data = { n, per:$("#fper").value, k:parseFloat($("#fk").value)||0, u:Date.now() };
   closeSheet();
   write(st => {
     if(id){ const f = st.foods.find(x => x.i === id); if(f) Object.assign(f, data); }
@@ -905,22 +930,22 @@ async function backupSheet(){
   sheet(`<h2>Restore a backup</h2><div class="sub">Loading…</div>`);
   try{
     const res = await fetch(ghUrl("backups"), { headers: ghHeaders() });
-    if(res.status === 404){ sheet(`<h2>Restore a backup</h2><div class="sub">No backups yet — create one first.</div>
-      <button style="width:100%;margin-top:12px" onclick="closeSheet()">Close</button>`); return; }
+    if(res.status === 404){ sheet(`<h2>Restore a backup</h2><div class="sub">No backups yet — create one first.</div>`,
+      { footer:`<button style="flex:1" onclick="closeSheet()">Close</button>` }); return; }
     if(!res.ok) throw new Error(await ghErr(res));
     const files = (await res.json()).filter(f => f.name.endsWith(".json"))
       .sort((a,b) => b.name.localeCompare(a.name)).slice(0, 20);
     sheet(`<h2>Restore a backup</h2>
       ${files.map(f => `<div class="wkrow" style="cursor:pointer" onclick="restoreBackup('${f.path}')">
-        <span class="num">${f.name.replace(".json","").replace("T"," · ").replace(/-(\d\d)-(\d\d)$/, ":$1:$2")}</span><span class="sub">restore ›</span></div>`).join("")}
-      <button style="width:100%;margin-top:12px" onclick="closeSheet()">Cancel</button>`);
-  }catch(e){ sheet(`<h2>Restore a backup</h2><div class="sub">${esc(e.message)}</div>
-    <button style="width:100%;margin-top:12px" onclick="closeSheet()">Close</button>`); }
+        <span class="num">${f.name.replace(".json","").replace("T"," · ").replace(/-(\d\d)-(\d\d)$/, ":$1:$2")}</span><span class="sub">restore ›</span></div>`).join("")}`,
+      { footer:`<button style="flex:1" onclick="closeSheet()">Close</button>` });
+  }catch(e){ sheet(`<h2>Restore a backup</h2><div class="sub">${esc(e.message)}</div>`,
+    { footer:`<button style="flex:1" onclick="closeSheet()">Close</button>` }); }
 }
 async function restoreBackup(path){
-  sheet(`<h2>Replace current data?</h2><div class="sub">Your data becomes exactly this snapshot. The current state is not saved unless you backed it up.</div>
-    <div class="row" style="margin-top:14px"><button class="primary danger" style="flex:1" onclick="reallyRestore('${path}')">Restore</button>
-    <button onclick="closeSheet()">Cancel</button></div>`);
+  sheet(`<h2>Replace current data?</h2><div class="sub">Your data becomes exactly this snapshot. The current state is not saved unless you backed it up.</div>`,
+    { footer: `<button style="flex:1" onclick="closeSheet()">Cancel</button>
+    <button class="danger" style="flex:1" onclick="reallyRestore('${path}')">Restore</button>` });
 }
 async function reallyRestore(path){
   closeSheet();
@@ -940,20 +965,35 @@ function demoSeed(s){
     ["Cappuccino","item",90,1],["Banana","item",105,1],["Egg","item",74,1],
     ["Oats","100g",389,0],["Milk 3.5%","100ml",64,0],["Olive oil","100g",884,0],
     ["Chicken breast","100g",165,1],["Rye bread slice","item",83,0],["Orange juice","100ml",44,0]];
-  s.foods = foods.map(([n,per,k,fav])=>({ i:uid(), n, per, k, fav:!!fav, a:[], u:Date.now() }));
+  s.foods = foods.map(([n,per,k,fav])=>({ i:uid(), n, per, k, fav:!!fav, u:Date.now() }));
   s.config.maintenance = 2400;
   // Engineered to exercise every §0 path: expired deposits (i14–i12), a FIFO
   // withdrawal (i11), red near-expiry deposits (i9, i8), a bank-covered feast
   // (i6), and a debt feast (i1) leaving an active [450, 300] plan today.
-  const spec = { 14:1800, 13:1750, 12:1900, 11:2350, 10:1700, 9:1650, 8:1750,
-                 7:1900, 6:3000, 5:1800, 4:1850, 3:1900, 2:1750, 1:3600 };
+  // i17/i16: zero-surplus days (no ledger effect); i15 intentionally ABSENT
+  // (a real zero-item gap reachable via the day-sheet arrows); i14..i1 keep
+  // the engineered totals. Item counts vary 2–15 for realistic day sheets.
+  const spec = { 17:2000, 16:2000, 14:1800, 13:1750, 12:1900, 11:2350, 10:1700,
+                 9:1650, 8:1750, 7:1900, 6:3000, 5:1800, 4:1850, 3:1900, 2:1750, 1:3600 };
+  const counts = { 17:3, 16:5, 14:3, 13:5, 12:8, 11:3, 10:4, 9:5, 8:3, 7:2,
+                   6:15, 5:4, 4:3, 3:6, 2:5, 1:8 };
+  const names = ["Cappuccino","Eggs","Toast","Yogurt","Apple","Chicken","Rice",
+                 "Salad","Cookie","Beer","Cheese","Nuts","Soup","Pasta","Banana",
+                 "Chocolate","Wrap","Snack"];
   let w = 87.4;
-  for(let i=14;i>=1;i--){
+  for(let i=17;i>=1;i--){
+    if(!(i in spec)) continue;
     const d = new Date(); d.setDate(d.getDate()-i); const k = dkey(d);
-    const kcal = spec[i];
+    const kcal = spec[i], n = counts[i];
     const e = [];
-    for(const [n,f] of [["Breakfast",0.3],["Lunch",0.35],["Dinner",0.35]])
-      e.push({ i:uid(), t:"12:00", n, q:1, k:Math.round(kcal*f) });
+    let rem = kcal;
+    for(let j=0;j<n;j++){
+      const part = j === n-1 ? rem : Math.max(40, Math.round((kcal/n) * (0.6 + 0.8*Math.abs(Math.sin(i*7+j*3)))));
+      const kk = j === n-1 ? rem : Math.min(part, rem - 40*(n-1-j));
+      rem -= kk;
+      const hh = 8 + Math.floor((13*j)/Math.max(n-1,1));
+      e.push({ i:uid(), t:String(hh).padStart(2,"0")+":"+(j%2?"30":"00"), n:names[(i*3+j)%names.length], q:1, k:kk });
+    }
     w += (kcal-2400)/7700 + Math.sin(i*2.1)*0.12;
     s.days[k] = { e, w:Math.round(w*10)/10, u:Date.now(), b:2000, c:300, g:80, m:2400 };
   }
@@ -980,6 +1020,7 @@ function render(){
 go("today");
 fetchState();
 document.addEventListener("visibilitychange", () => { if(!document.hidden) fetchState(); });
+$("#sheetbody").addEventListener("scroll", updateSheetEdge);
 if("serviceWorker" in navigator && !DEMO && location.protocol==="https:")
   navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
