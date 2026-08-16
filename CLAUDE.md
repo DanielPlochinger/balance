@@ -70,8 +70,9 @@ Every version gets its own plan document (`V<version>_PLAN.md`), created in
 three stages: big picture first, then details honed with Daniel, then a single
 execution pass once he approves. The plan docs stay in this folder forever as
 the inventory of what each version changed. **Never invent a new version
-number or create a new plan document without asking Daniel first.** Bugfix
-patches (x.y.Z) ship without a doc; feature versions (x.Y) require one.
+number or create a new plan document without asking Daniel first.** This
+applies to bugfix patches (x.y.Z) too: their docs capture the troubleshooting
+back-and-forth (symptom → diagnosis → fix) before anything is executed.
 
 ## Data deletion policy (Daniel, 2026-08-15)
 
