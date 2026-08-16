@@ -64,6 +64,15 @@ records + snapshots is derived — never persist ledger/plan state.
 - Demo mode: `?demo=1` — separate localStorage key, seeded data, stubbed LLM.
   Keep it working; it's how the app is tested without keys.
 
+## Versioning workflow (Daniel, 2026-08-15)
+
+Every version gets its own plan document (`V<version>_PLAN.md`), created in
+three stages: big picture first, then details honed with Daniel, then a single
+execution pass once he approves. The plan docs stay in this folder forever as
+the inventory of what each version changed. **Never invent a new version
+number or create a new plan document without asking Daniel first.** Bugfix
+patches (x.y.Z) ship without a doc; feature versions (x.Y) require one.
+
 ## Data deletion policy (Daniel, 2026-08-15)
 
 When Daniel asks to delete data, he means **unrecoverable**: wipe the state
