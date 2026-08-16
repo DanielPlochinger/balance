@@ -86,8 +86,11 @@ outcomes):
    structural breakage and for reuse of existing objects/patterns; report
    findings in chat; fold Daniel's rulings into the doc.
 4. **Execute once**, on Daniel's explicit go, from the doc alone.
-5. **Demo review before distribution.** After building and testing, show Daniel
-   the feature in demo (screenshots) and wait for his chime-in BEFORE deploying.
+5. **Dropbox approval gates the push.** After building and testing, start the
+   local server and hand Daniel `http://localhost:8899/index.html?demo=1`.
+   He audits the Dropbox version there and gives notes; iterate locally
+   (edit → he refreshes) until he approves. Only THEN push to GitHub.
+   Nothing is published without this approval.
 6. **Ship record.** Append a short shipped note (version, date, tag) when done.
 
 Writing standard: for an implementer with no chat context — the doc alone must
