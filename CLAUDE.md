@@ -86,7 +86,9 @@ outcomes):
    structural breakage and for reuse of existing objects/patterns; report
    findings in chat; fold Daniel's rulings into the doc.
 4. **Execute once**, on Daniel's explicit go, from the doc alone.
-5. **Ship record.** Append a short shipped note (version, date, tag) when done.
+5. **Demo review before distribution.** After building and testing, show Daniel
+   the feature in demo (screenshots) and wait for his chime-in BEFORE deploying.
+6. **Ship record.** Append a short shipped note (version, date, tag) when done.
 
 Writing standard: for an implementer with no chat context — the doc alone must
 suffice to build faithfully. Bugs as symptom → cause → fix; changes as
