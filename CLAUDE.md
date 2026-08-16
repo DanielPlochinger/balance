@@ -66,19 +66,33 @@ records + snapshots is derived — never persist ledger/plan state.
 - Demo mode: `?demo=1` — separate localStorage key, seeded data, stubbed LLM.
   Keep it working; it's how the app is tested without keys.
 
-## Versioning workflow (Daniel, 2026-08-15)
+## Version plan docs (the process — Daniel, locked 2026-08-16)
 
-Every version gets its own plan document (`V<version>_PLAN.md`), created in
-three stages: big picture first, then details honed with Daniel, then a single
-execution pass once he approves. The plan docs stay in this folder forever as
-the inventory of what each version changed.
-Doc standard: written for an implementer with no chat context — the doc alone
-must suffice to build faithfully. Imperative bullets for the what; a one-line
-intent note wherever intent constrains an ambiguous implementation choice;
-never conversational back-and-forth. V2.4_PLAN.md is the reference example. **Never invent a new version
-number or create a new plan document without asking Daniel first.** This
-applies to bugfix patches (x.y.Z) too: their docs capture the troubleshooting
-back-and-forth (symptom → diagnosis → fix) before anything is executed.
+Every version — features and bugfix patches alike — gets a **plan doc**:
+`V<version>_PLAN.md`, kept in this folder forever as the inventory of what
+that version changed. **Never invent a version number or create a plan doc
+without asking Daniel first.**
+
+Lifecycle (all stages happen IN CONVERSATION; the doc only ever contains
+outcomes):
+1. **Blank start.** The doc begins empty — never pre-populate outlines,
+   candidate lists, or backlog items. Backlog lives in `BACKLOG.md`, never in
+   version notes.
+2. **Discuss.** Bugs/changes are raised and honed in chat. Proposals and
+   alternatives stay in chat; only what Daniel approves enters the doc, marked
+   LOCKED with date.
+3. **Audit.** Before execution: check every item against the existing code for
+   structural breakage and for reuse of existing objects/patterns; report
+   findings in chat; fold Daniel's rulings into the doc.
+4. **Execute once**, on Daniel's explicit go, from the doc alone.
+5. **Ship record.** Append a short shipped note (version, date, tag) when done.
+
+Writing standard: for an implementer with no chat context — the doc alone must
+suffice to build faithfully. Bugs as symptom → cause → fix; changes as
+imperative bullets; a one-line *intent* note wherever intent constrains an
+ambiguous implementation choice. Distilled decisions only — never
+conversational back-and-forth, attribution, or unapproved proposals.
+Reference examples: `V2.4_PLAN.md`, `V2.4.3_PLAN.md`.
 
 ## Data deletion policy (Daniel, 2026-08-15)
 
