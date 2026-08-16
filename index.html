@@ -114,6 +114,9 @@ nav button.on{color:var(--accent);background:var(--tint);font-weight:700;}
   background:var(--ink);color:#fff;font-size:14px;font-weight:600;padding:11px 18px;border-radius:999px;
   z-index:70;display:none;align-items:center;gap:12px;white-space:nowrap;box-shadow:0 8px 26px rgba(0,0,0,.28);}
 #toast button{background:none;border:none;color:inherit;font-weight:800;padding:0;text-decoration:underline;}
+#chip{position:fixed;display:none;transform:translate(-50%,-135%);background:var(--ink);color:#fff;
+  font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:999px;z-index:65;white-space:nowrap;
+  box-shadow:0 6px 18px rgba(0,0,0,.24);pointer-events:none;font-variant-numeric:tabular-nums;}
 .chart{width:100%;height:auto;display:block;}
 .chart text{font-family:var(--sans);fill:var(--muted);font-size:9px;}
 .banner{background:var(--amber-tint);border:none;
@@ -145,10 +148,11 @@ nav button.on{color:var(--accent);background:var(--tint);font-weight:700;}
 
 <div id="overlay" onclick="if(event.target===this)closeSheet()"><div id="sheet"></div></div>
 <div id="toast"></div>
+<div id="chip"></div>
 
 <script>
 "use strict";
-const APP_VERSION = "2.4.2";
+const APP_VERSION = "2.4.3";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -328,6 +332,7 @@ Rules:
 - The user's saved foods are listed below with an id. If an item clearly matches one, set library_id to that id — the app recomputes kcal from the library, so your numbers are only a fallback.
 - Otherwise estimate kcal yourself using standard nutrition knowledge. kcal must be the TOTAL for the stated quantity.
 - grams: your best estimate of the total weight in grams for the line (0 if it makes no sense). For drinks and liquids — especially library foods with a per-100 ml basis — report the volume in millilitres as grams (assume 1 ml ≈ 1 g).
+- Exercise and activities (workouts, runs, classes, sports) are NEGATIVE kcal. Use the user's stated number as negative ("spin class -500" or "spin class 500 burned" → kcal -500); estimate only if no number is given. grams: 0.
 - unit: short label like "item", "g", "ml", "slice", "cup".
 - Keep names short and singular ("Cappuccino", not "two cappuccinos").
 User's saved foods (id|name|basis|kcal):
@@ -369,8 +374,7 @@ function enrich(items){
       else { const g = it.grams > 0 ? it.grams : (f.g||100) * it.qty;
              k = Math.round(f.k * g/100); }
     }
-    return { name:it.name, qty:it.qty, unit:it.unit, grams:it.grams, k, src,
-             save: src==="ai" && !activeFoods().some(x=>x.n.toLowerCase()===it.name.toLowerCase()) };
+    return { name:it.name, qty:it.qty, unit:it.unit, grams:it.grams, k, src, save:false };
   });
 }
 
@@ -489,12 +493,23 @@ function toast(msg, undo){
 }
 function sheet(html){ $("#sheet").innerHTML = html; $("#overlay").classList.add("show"); }
 function closeSheet(){ $("#overlay").classList.remove("show"); pendingItems = null; }
+/* shared tap-chip for chart values (weight dots + calorie bars) */
+function showChip(ev, text){
+  ev.stopPropagation();
+  const c = $("#chip");
+  c.textContent = text;
+  c.style.left = ev.clientX + "px";
+  c.style.top = ev.clientY + "px";
+  c.style.display = "block";
+}
+function hideChip(){ $("#chip").style.display = "none"; }
+document.addEventListener("click", hideChip);
 
 /* ───────────────────────── Today ───────────────────────── */
 function ringSVG(frac, over){
   const R = 46, C = 2*Math.PI*R, off = C*(1-Math.min(Math.max(frac,0),1));
   const col = over ? "var(--over)" : "var(--accent)";
-  const pct = Math.round(frac*100);
+  const pct = Math.max(0, Math.round(frac*100));
   return `<svg width="112" height="112" viewBox="0 0 112 112" style="flex:0 0 auto">
     <circle cx="56" cy="56" r="${R}" fill="none" stroke="var(--ring-track)" stroke-width="11"/>
     <circle cx="56" cy="56" r="${R}" fill="none" stroke="${col}" stroke-width="11" stroke-linecap="round"
@@ -519,7 +534,7 @@ function renderToday(){
       ${ringSVG(c/T, over)}
       <div style="flex:1;min-width:0">
         <div class="heronum2 ${over?"neg":""}">${Math.abs(Math.round(left)).toLocaleString()}</div>
-        <div class="sub num">${over?"kcal over":"kcal left"} · ${Math.round(c).toLocaleString()} of ${Math.round(T).toLocaleString()} eaten</div>
+        <div class="sub num">${over?"kcal over":"kcal left"} · ${Math.round(c).toLocaleString()} of ${Math.round(T).toLocaleString()}</div>
         ${trim ? `<div class="sub num" style="font-size:11.5px;margin-top:3px">${T.toLocaleString()} = ${B.toLocaleString()} budget − ${trim.toLocaleString()} repayment</div>` : ""}
       </div>
     </div>
@@ -533,14 +548,16 @@ function renderToday(){
   h += `<div class="card"><h3>Logged today · ${r.e.length} item${r.e.length===1?"":"s"}</h3>`;
   h += r.e.length ? r.e.map(e=>`<div class="entry" onclick="delEntry('${e.i}')">
       <span><span class="t">${e.t}</span><span class="n">${e.q>1?e.q+"× ":""}${esc(e.n)}</span></span>
-      <span><span class="k">${e.k}</span> <span class="sub">kcal</span></span></div>`).join("")
+      <span><span class="k" ${e.k<0?'style="color:var(--blue)"':""}>${e.k}</span> <span class="sub">kcal</span></span></div>`).join("")
     : `<div class="sub">Nothing yet. Tell me what you ate.</div>`;
   h += `</div>`;
   const bd = bankDisplay();
   h += `<div class="kpis">
     <div class="kpi" onclick="bankSheet()" style="cursor:pointer"><div class="l">Calorie bank</div><div class="v" style="color:${bd.col}">${bd.v}</div><div class="sub">${ledger().debt>0?"in debt — repaying":"tap for details"}</div></div>
-    <div class="kpi"><div class="l">Weight today</div>
-      <div class="row"><input id="win" type="number" inputmode="decimal" step="0.1" placeholder="${lastWeight()||"kg"}" value="${r.w||""}" style="width:84px;padding:6px 8px"><button class="ghost" onclick="saveWeight()">Save</button></div></div>
+    <div class="kpi"><div class="l">Weight</div>
+      <div class="row"><input id="win" type="number" inputmode="decimal" step="0.1" placeholder="kg" value="${lastWeight()||""}" style="width:84px;padding:6px 8px;color:var(--muted)"
+        oninput="this.style.color='var(--ink)';document.getElementById('wsave').disabled=false">
+      <button id="wsave" class="ghost" disabled onclick="saveWeight()">Save</button></div></div>
   </div>`;
   return h;
 }
@@ -635,7 +652,7 @@ function manualSheet(){
   sheet(`<h2>Manual entry</h2>
     <label>Name</label><input id="mn" placeholder="Cappuccino">
     <label>kcal (total)</label><input id="mk" type="number" inputmode="numeric">
-    <label style="margin-top:10px"><input id="ms" type="checkbox" style="width:auto;margin-right:6px" checked> Save to my foods</label>
+    <label style="margin-top:10px"><input id="ms" type="checkbox" style="width:auto;margin-right:6px"> Save to my foods</label>
     <div class="row" style="margin-top:14px"><button class="primary" style="flex:1" onclick="manualLog()">Log</button>
     <button onclick="closeSheet()">Cancel</button></div>`);
 }
@@ -660,7 +677,16 @@ function chartWeight(n){
   const X = i => P + i*(W-P-8)/(pts.length-1);
   const Y = v => H-16 - (v-lo)*(H-28)/(hi-lo);
   const line = sm.map((p,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(p[1]).toFixed(1)).join(" ");
-  let goal = "";
+  const cur = pts[pts.length-1][1];
+  // inset ruler: faint lines at clean intervals, small values, behind the data
+  const range = hi - lo;
+  const step = [0.5, 1, 2, 5, 10].find(s => range / s <= 6) || 10;
+  let ruler = "";
+  for(let v = Math.ceil(lo/step)*step; v <= hi; v += step){
+    ruler += `<line x1="${P-16}" x2="${W-8}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--border)" stroke-width="0.5"/>
+      <text x="${P-16}" y="${(Y(v)-2.5).toFixed(1)}" font-size="8" fill="var(--tonal2)">${step<1?v.toFixed(1):Math.round(v)}</text>`;
+  }
+  let goal = "", goalHidden = false;
   if(liveGoals.length){
     let path = "", prev = null;
     goals.forEach((g,i)=>{ if(!g) return;
@@ -668,16 +694,19 @@ function chartWeight(n){
       else path += `L${X(i).toFixed(1)} ${Y(prev).toFixed(1)}` + (g!==prev?` L${X(i).toFixed(1)} ${Y(g).toFixed(1)}`:"");
       prev = g; });
     path += `L${(W-8).toFixed(1)} ${Y(prev).toFixed(1)}`;
-    goal = `<path d="${path}" fill="none" stroke="var(--gold)" stroke-dasharray="4 4" stroke-width="1"/><text x="${W-10}" y="${Y(prev)-4}" text-anchor="end" fill="var(--gold)">goal ${prev}</text>`;
+    goalHidden = Math.abs(Y(prev) - Y(cur)) < 16; // collision: weight wins
+    goal = `<path d="${path}" fill="none" stroke="var(--gold)" stroke-dasharray="4 4" stroke-width="1"/>` +
+      (goalHidden ? "" : `<text x="${W-10}" y="${(Y(prev)-4).toFixed(1)}" text-anchor="end" fill="var(--gold)">goal ${prev}</text>`);
   }
+  const chipFor = (k,w) => `showChip(event,'${new Date(k+"T12:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"})} · ${w}')`;
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">
+    ${ruler}
     <line x1="${P}" x2="${W-8}" y1="${H-16}" y2="${H-16}" stroke="var(--border)" />
     ${goal}
-    ${pts.map((p,i)=>`<circle cx="${X(i)}" cy="${Y(p[1])}" r="2.8" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.2" opacity="0.8"><title>${p[0]}: ${p[1]} kg</title></circle>`).join("")}
     <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
-    <circle cx="${X(pts.length-1)}" cy="${Y(sm[sm.length-1][1])}" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>
-    <text x="${P}" y="10">${hi.toFixed(1)}</text><text x="${P}" y="${H-4}">${lo.toFixed(1)}</text>
-    <text x="${W-8}" y="10" text-anchor="end" fill="var(--ink)" font-weight="600">${sm[sm.length-1][1].toFixed(1)} kg trend</text>
+    ${pts.map((p,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="2.8" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.2" opacity="0.8"/>
+      <circle cx="${X(i).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="11" fill="transparent" onclick="${chipFor(p[0], p[1])}"/>`).join("")}
+    <text x="${W-8}" y="${(Y(cur)-9).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--ink)" font-weight="700" class="num">${cur}</text>
   </svg>`;
 }
 function chartCals(n){
@@ -697,7 +726,10 @@ function chartCals(n){
     const c = consumed(r);
     const t = (k === today ? cfg().budget - L.todayTrim : budgets[i] - (L.trims[k]||0));
     const col = c > t ? "var(--over)" : "var(--accent)";
-    bars += `<rect x="${X(i).toFixed(1)}" y="${Y(c).toFixed(1)}" width="${bw.toFixed(1)}" height="${(H-18-Y(c)).toFixed(1)}" rx="2.5" fill="${col}"><title>${k}: ${Math.round(c)} / ${Math.round(t)} kcal</title></rect>`;
+    const cSafe = Math.max(c, 0);
+    const h = Math.max(H-18-Y(cSafe), 2);
+    const label = `${new Date(k+"T12:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"})} · ${Math.round(c).toLocaleString()}`;
+    bars += `<rect x="${X(i).toFixed(1)}" y="${(H-18-h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2.5" fill="${col}" onclick="showChip(event,'${label}')"/>`;
   });
   // stepped budget line
   let bpath = `M${P} ${Y(budgets[0]).toFixed(1)}`;
@@ -860,20 +892,23 @@ function demoSeed(s){
     s.days[k] = { e, w:Math.round(w*10)/10, u:Date.now(), b:2000, c:300, g:80, m:2400 };
   }
   s.days[dkey()] = { e:[ { i:uid(), t:"08:10", n:"Cappuccino", q:2, k:180 },
-                         { i:uid(), t:"08:12", n:"Oats with milk", q:1, k:420 } ], u:Date.now() };
+                         { i:uid(), t:"08:12", n:"Oats with milk", q:1, k:420 },
+                         { i:uid(), t:"09:30", n:"Spin class", q:1, k:-500 } ], u:Date.now() };
 }
 async function demoParse(text){
   await new Promise(r=>setTimeout(r,700));
   return [
     { name:"Cappuccino", qty:2, unit:"item", grams:0, kcal:220, library_id:(S.foods.find(f=>f.n==="Cappuccino")||{}).i||"" },
     { name:"Banana", qty:1, unit:"item", grams:120, kcal:105, library_id:(S.foods.find(f=>f.n==="Banana")||{}).i||"" },
-    { name:"Currywurst", qty:1, unit:"item", grams:220, kcal:540, library_id:"" }
+    { name:"Currywurst", qty:1, unit:"item", grams:220, kcal:540, library_id:"" },
+    { name:"Running", qty:1, unit:"item", grams:0, kcal:-200, library_id:"" }
   ];
 }
 
 /* ───────────────────────── boot ───────────────────────── */
 function render(){
   _L = null;
+  hideChip();
   $("#main").innerHTML = { today:renderToday, trends:renderTrends, foods:renderFoods, settings:renderSettings }[view]();
 }
 purgeWiped();
