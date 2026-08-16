@@ -1,5 +1,6 @@
 # Backlog (not version notes — just so nothing is forgotten)
 
+- Settings › Data: show the latest backup (date · time) after creating one (Daniel, Aug 16)
 - Someday: derive maintenance from intake vs weight trend (parked)
 
 ## Architecture maturity — sound for a single-user early version; revisit only if the tool grows
