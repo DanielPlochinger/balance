@@ -56,13 +56,12 @@ records + snapshots is derived — never persist ledger/plan state.
 - v1.0 look (serif numerals, edge-to-edge tab bar, ledger neutrals) is
   frozen at git tag `v1.0` / GitHub release. Revert:
   `git checkout v1.0 -- . && git commit && git push` (bump sw.js CACHE after).
-- Light and dark themes via CSS custom properties; both must stay legible.
 - No browser-native `alert`/`confirm`/`prompt` — the bottom-sheet (`sheet()`)
   is the only modal.
 - Weight trend: raw dots + EMA (α=0.3) line.
 - Charts: numbers appear only for truths (entered values, goals); trend lines
   are purely visual — direction and rate, never labeled. No axis-bound labels.
-- Weekly close: net kcal vs budget ≈ kg at 7700 kcal/kg; deficit shown as −.
+- Weekly close: net kcal vs snapshotted maintenance ≈ kg at 7,700 kcal/kg (v2.4).
 - Demo mode: `?demo=1` — separate localStorage key, seeded data, stubbed LLM.
   Keep it working; it's how the app is tested without keys.
 
@@ -113,4 +112,4 @@ shipping user-visible changes, or phones will serve the stale shell.
 
 `.claude/launch.json` (in the invoice-app working folder) has a `balance`
 config: `python3 -m http.server 8899` serving this folder. Open
-`/index.html?demo=1`, mobile viewport 375×812, check light + dark.
+`/index.html?demo=1`, mobile viewport 375×812. Light theme only.
