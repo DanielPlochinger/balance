@@ -23,13 +23,15 @@ records + snapshots is derived — never persist ledger/plan state.
   step, no npm. Keep it that way.
 - Hosting: GitHub Pages from the public repo `DanielPlochinger/balance`
   (code only — never put data or keys there).
-- Data: `state.json` in the **private** repo `DanielPlochinger/balance-data`,
-  written via the GitHub Contents API. Merge strategy: per-day / per-food
-  `u` (updatedAt) timestamps, last-write-wins, with a content guard: a day
-  holding entries/weight/cheat always beats an empty record regardless of
-  timestamps (an auto-created empty "today" once clobbered real entries —
-  don't remove this guard). Auto-created day records get `u:0`; only real
-  mutations bump `u`. Sha-based optimistic concurrency, one pull-merge-retry.
+- Data (v2.5, **remote truth** — spec `V2.5_PLAN.md`): `state.json` in the
+  **private** repo `DanielPlochinger/balance-data` is the ONLY truth. Local
+  storage is a display cache, never merged back. All mutations funnel through
+  `write(mutator)`: fetch fresh → mutate → PUT with sha; conflict → refetch +
+  reapply (≤3). In-flight writes serialize. Offline = read-only (no queues).
+  There is NO merge engine, no tombstones, no wipe-signals — do not
+  reintroduce local-first machinery; that bug class was removed deliberately
+  after repeated data-loss incidents. Backups = dated snapshots under
+  `backups/` in the same repo; restore is a normal write.
 - LLM parsing: browser-direct call to the Claude API
   (`anthropic-dangerous-direct-browser-access` header), structured outputs
   (`output_config.format` json_schema). Library matches are recomputed
@@ -95,12 +97,12 @@ Reference examples: `V2.4_PLAN.md`, `V2.4.3_PLAN.md`.
 
 ## Data deletion policy (Daniel, 2026-08-15)
 
-When Daniel asks to delete data, he means **unrecoverable**: wipe the state
-AND rewrite `balance-data` git history (orphan commit, force push). Never
-retain old states "just in case" and never pitch git history as a recovery
-feature. The app is local-first — a wipe is only complete once every device
-has pulled the wipe signal and purged its local copy (purge is by DATE,
-v2.4.2). Keep food tombstones through a wipe until all devices have synced.
+When Daniel asks to delete data, he means **unrecoverable**: edit the single
+truth (`state.json`) AND rewrite `balance-data` git history (orphan commit,
+force push), including any `backups/` snapshots that contain the deleted
+data. Never retain old states "just in case" and never pitch git history as
+a recovery feature. Under remote truth (v2.5) device caches self-heal on
+their next fetch — no wipe signals needed.
 
 ## Deploying
 

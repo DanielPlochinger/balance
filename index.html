@@ -69,6 +69,7 @@ button.primary{background:var(--accent);color:#fff;font-weight:700;padding:14px 
 button.ghost{background:transparent;color:var(--accent);font-weight:700;padding:9px 11px;}
 button.danger{color:var(--over);}
 button:disabled{opacity:.45;}
+button.offv{opacity:.45;}
 input,select,textarea{font-family:var(--sans);font-size:16px;color:var(--ink);
   background:var(--surface2);border:1px solid transparent;border-radius:13px;padding:11px 13px;width:100%;}
 input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);
@@ -152,7 +153,7 @@ nav button.on{color:var(--accent);background:var(--tint);font-weight:700;}
 
 <script>
 "use strict";
-const APP_VERSION = "2.4.3";
+const APP_VERSION = "2.5.0";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -172,21 +173,11 @@ function seed(){
   if(DEMO) demoSeed(s);
   return s;
 }
-function persist(){ localStorage.setItem(LSKEY, JSON.stringify(S)); _L = null; scheduleSync(); }
+function cache(){ localStorage.setItem(LSKEY, JSON.stringify(S)); _L = null; }
 function saveSec(){ localStorage.setItem(SECKEY, JSON.stringify(SEC)); }
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function dkey(d){ const x = d||new Date(); return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"); }
 function dayRec(k){ if(!S.days[k]) S.days[k] = { e:[], u:0 }; return S.days[k]; }
-function touch(k){ S.days[k].u = Date.now(); persist(); }
-function purgeWiped(){
-  const w = S.config.wipedAt || 0; if(!w) return;
-  // Judge by DATE, not modification time: stamping/re-timestamping can never
-  // immunize a pre-wipe day (v2.4.2 fix). Same-day-as-wipe: only post-wipe
-  // writes survive.
-  const wd = dkey(new Date(w));
-  for(const k of Object.keys(S.days))
-    if(k < wd || (S.days[k].u||0) < w) delete S.days[k];
-}
 
 /* ─────────────── math: §0 daily settlement (see V2.4_PLAN.md) ─────────────── */
 const cfg = () => S.config;
@@ -284,18 +275,6 @@ function streak(){
   }
   return n;
 }
-// §13: stamp settings-of-the-day onto unstamped closed days.
-function stampDays(){
-  let changed = false;
-  for(const k of closedDays()){
-    const r = S.days[k];
-    if(r.b === undefined){
-      r.b = cfg().budget; r.c = cfg().cap; r.g = cfg().goal ?? null;
-      r.m = cfg().maintenance || 2400; r.u = Date.now(); changed = true;
-    }
-  }
-  if(changed) persist();
-}
 function weekStart(k){ const d = new Date(k+"T12:00"); const wd = (d.getDay()+6)%7; d.setDate(d.getDate()-wd); return dkey(d); }
 // §16: weekly closes are physiological — vs snapshotted maintenance, never budget/trims.
 function weeklyCloses(){
@@ -325,7 +304,7 @@ function weights(n){
 async function llmParse(text){
   if(DEMO) return demoParse(text);
   if(!SEC.anthropic) throw new Error("No Claude API key yet — add it in Settings.");
-  const lib = activeFoods().slice(0,300).map(f=>`${f.i}|${f.n}${f.a&&f.a.length?" ("+f.a.join(", ")+")":""}|per ${f.per==="item"?"item":f.per==="100ml"?"100 ml":"100 g"}|${f.k} kcal`).join("\n");
+  const lib = S.foods.slice(0,300).map(f=>`${f.i}|${f.n}${f.a&&f.a.length?" ("+f.a.join(", ")+")":""}|per ${f.per==="item"?"item":f.per==="100ml"?"100 ml":"100 g"}|${f.k} kcal`).join("\n");
   const sys = `You convert casual food-diary text (often dictated, possibly German or English) into structured nutrition data.
 Rules:
 - Split the text into individual food items with quantities.
@@ -362,8 +341,7 @@ ${lib || "(none yet)"}`;
   return JSON.parse(block.text).items || [];
 }
 
-function findFood(id){ const f = S.foods.find(f=>f.i===id); return f && !f.del ? f : null; }
-const activeFoods = () => S.foods.filter(f=>!f.del);
+function findFood(id){ return S.foods.find(f=>f.i===id); }
 function enrich(items){
   return items.map(it=>{
     const f = it.library_id ? findFood(it.library_id) : null;
@@ -378,104 +356,94 @@ function enrich(items){
   });
 }
 
-/* ───────────────────────── sync (GitHub) ───────────────────────── */
+/* ─────────── sync: remote truth (V2.5_PLAN.md §1/§7) ─────────── */
 function ghReady(){ return !DEMO && SEC.github && SEC.repo; }
-function ghUrl(){ return `https://api.github.com/repos/${SEC.repo}/contents/state.json`; }
+const ghUrl = (path = "state.json") => `https://api.github.com/repos/${SEC.repo}/contents/${path}`;
 function ghHeaders(){ return { "Authorization":"Bearer "+SEC.github, "Accept":"application/vnd.github+json" }; }
 function setDot(cls, txt){ const d = document.getElementById("syncdot"); d.className = cls; d.textContent = txt; }
-
-const hasContent = d => !!(d && ((d.e && d.e.length) || d.w));
-function mergeState(remote){
-  if(!remote) return;
-  if((remote.config?.u||0) > (S.config.u||0)) S.config = remote.config;
-  for(const [k,r] of Object.entries(remote.days||{})){
-    const mine = S.days[k];
-    // Content always beats an empty record; timestamps only break content-vs-content ties.
-    const better = !mine ? true
-      : hasContent(r) && !hasContent(mine) ? true
-      : !hasContent(r) && hasContent(mine) ? false
-      : (r.u||0) > (mine.u||0);
-    if(better) S.days[k] = r;
-  }
-  const mine = Object.fromEntries(S.foods.map(f=>[f.i,f]));
-  for(const f of (remote.foods||[]))
-    if(!mine[f.i] || (f.u||0) > (mine[f.i].u||0)) mine[f.i] = f;
-  S.foods = Object.values(mine);
-  purgeWiped();
-  _L = null;
-  stampDays();
-}
-let lastSyncErr = null;
-async function pull(){
-  if(!ghReady()) return;
-  try{
-    setDot("pending","syncing");
-    const res = await fetch(ghUrl()+"?ref=main", { headers: ghHeaders() });
-    if(res.status === 404){ remoteSha = null; setDot("ok","synced"); return; }
-    if(!res.ok) throw new Error(await ghErr(res));
-    const j = await res.json();
-    remoteSha = j.sha;
-    mergeState(JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g,""))))));
-    localStorage.setItem(LSKEY, JSON.stringify(S));
-    lastSyncErr = null; setDot("ok","synced"); render();
-  }catch(e){ lastSyncErr = e.message; setDot("err","sync error"); }
-}
-async function push(retry){
-  if(!ghReady()) { setDot("","local"); return; }
-  try{
-    setDot("pending","syncing");
-    const body = { message:"balance "+new Date().toISOString().slice(0,16),
-      content: btoa(unescape(encodeURIComponent(JSON.stringify(S)))) };
-    if(remoteSha) body.sha = remoteSha;
-    const res = await fetch(ghUrl(), { method:"PUT", headers:ghHeaders(), body:JSON.stringify(body) });
-    if(res.status === 409 || res.status === 422){
-      if(!retry){ await pull(); return push(true); }
-      throw new Error("conflict after retry");
-    }
-    if(!res.ok) throw new Error(await ghErr(res));
-    remoteSha = (await res.json()).content.sha;
-    lastSyncErr = null; setDot("ok","synced");
-  }catch(e){ lastSyncErr = e.message; setDot("err","sync error"); }
-}
 async function ghErr(res){
   const j = await res.json().catch(()=>({}));
   return "HTTP "+res.status+(j.message?" — "+j.message:"");
 }
-async function testConnections(){
-  const out = $("#testout"); out.innerHTML = `<div class="sub">Testing…</div>`;
-  let gh = "", cl = "";
-  // GitHub: can the token see the repo, and can it write?
-  if(!SEC.github) gh = "✗ No GitHub token entered.";
-  else try{
-    const res = await fetch("https://api.github.com/repos/"+SEC.repo, { headers: ghHeaders() });
-    if(res.status === 401) gh = "✗ GitHub says the token itself is invalid or expired (401). Regenerate it and paste again.";
-    else if(res.status === 404) gh = `✗ Token works but cannot see <b>${esc(SEC.repo)}</b> (404). Two usual causes: the token's <i>Repository access</i> doesn't include balance-data, or the repo field is wrong — it must be exactly <code>DanielPlochinger/balance-data</code>.`;
-    else if(!res.ok) gh = "✗ GitHub: "+await ghErr(res);
-    else {
-      const j = await res.json();
-      gh = j.permissions && j.permissions.push
-        ? "✓ GitHub: token sees the repo and has write access."
-        : "✗ Token sees the repo but is <b>read-only</b> — edit the token and set Contents to <i>Read and write</i>.";
-    }
-  }catch(e){ gh = "✗ GitHub unreachable: "+esc(e.message); }
-  // Claude: minimal ping
-  if(!SEC.anthropic) cl = "✗ No Claude API key entered.";
-  else try{
-    const res = await fetch("https://api.anthropic.com/v1/messages", { method:"POST",
-      headers:{ "content-type":"application/json", "x-api-key":SEC.anthropic,
-        "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-      body: JSON.stringify({ model:SEC.model, max_tokens:1, messages:[{role:"user",content:"ping"}] }) });
-    if(res.status === 401) cl = "✗ Claude: key rejected (401) — re-copy it from console.anthropic.com.";
-    else if(res.ok) cl = "✓ Claude: key works, model responds.";
-    else { const j = await res.json().catch(()=>({}));
-      cl = "✗ Claude: HTTP "+res.status+" — "+esc(j.error && j.error.message || "unknown error")
-         + (res.status===400 && /credit|billing/i.test(j.error&&j.error.message||"") ? " (add credit under Billing)" : ""); }
-  }catch(e){ cl = "✗ Claude unreachable: "+esc(e.message); }
-  out.innerHTML = `<div class="sub" style="margin-top:8px">${gh}<br>${cl}${lastSyncErr?`<br>Last sync error: ${esc(lastSyncErr)}`:""}</div>`;
-  if(gh.startsWith("✓")) { await pull(); push(false); }
+const b64enc = str => { const b = new TextEncoder().encode(str); let out = ""; b.forEach(c => out += String.fromCharCode(c)); return btoa(out); };
+const b64dec = b64 => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\n/g,"")), c => c.charCodeAt(0)));
+
+let NET = "boot";          // boot | on | off | err
+let lastSyncErr = null;
+const isOffline = () => !DEMO && NET !== "on";
+
+// §3: settings-of-the-day, written onto the open day at every write.
+function stampToday(st){
+  const r = st.days[dkey()];
+  if(!r) return;
+  const c = st.config;
+  r.b = c.budget; r.c = c.cap; r.g = c.goal ?? null; r.m = c.maintenance || 2400;
 }
-function scheduleSync(){ if(!ghReady()) return; clearTimeout(syncTimer); syncTimer = setTimeout(()=>push(false), 2500); }
-document.addEventListener("visibilitychange", ()=>{ if(document.hidden && ghReady()){ clearTimeout(syncTimer); push(false); } });
+
+async function ghGetState(){
+  const res = await fetch(ghUrl() + "?ref=main&t=" + Date.now(), { headers: ghHeaders() });
+  if(res.status === 404) return { state: null, sha: undefined };
+  if(!res.ok) throw new Error(await ghErr(res));
+  const j = await res.json();
+  return { state: JSON.parse(b64dec(j.content)), sha: j.sha };
+}
+
+async function fetchState(){
+  if(DEMO){ setDot("", "demo"); return; }
+  if(!ghReady()){ NET = "off"; setDot("", "offline"); return; }
+  setDot("pending", NET === "boot" ? "connecting" : "syncing");
+  try{
+    const { state } = await ghGetState();
+    if(state){ S = state; cache(); }
+    NET = "on"; lastSyncErr = null; setDot("ok", "live"); render();
+  }catch(e){
+    lastSyncErr = e.message;
+    NET = (e instanceof TypeError) ? "off" : "err";
+    setDot(NET === "off" ? "" : "err", NET === "off" ? "offline" : "error");
+    render();
+  }
+}
+
+// One user action = one remote write. In-flight writes serialize (not an
+// offline queue: nothing persists; offline blocks writes before they start).
+let _wq = Promise.resolve();
+function write(mutate, label){
+  if(DEMO){ mutate(S); stampToday(S); cache(); render(); return Promise.resolve(true); }
+  if(!ghReady()){ toast("Add your GitHub token in Settings first"); return Promise.resolve(false); }
+  if(isOffline() && NET !== "boot"){ toast("Offline — logging needs a connection"); return Promise.resolve(false); }
+  const job = async () => {
+    setDot("pending", "saving");
+    try{
+      for(let attempt = 0; attempt < 3; attempt++){
+        const { state, sha } = await ghGetState();
+        const st = state || seed();
+        mutate(st);
+        stampToday(st);
+        const body = { message: label || "balance", content: b64enc(JSON.stringify(st)) };
+        if(sha) body.sha = sha;
+        const put = await fetch(ghUrl(), { method:"PUT", headers: ghHeaders(), body: JSON.stringify(body) });
+        if(put.status === 409 || put.status === 422) continue;     // conflict: refetch + reapply
+        if(!put.ok) throw new Error(await ghErr(put));
+        S = st; cache(); NET = "on"; lastSyncErr = null;
+        setDot("ok", "live"); render();
+        return true;
+      }
+      lastSyncErr = "conflict retries exhausted";
+      setDot("err", "error"); toast("Sync conflict — try again"); render();
+      return false;
+    }catch(e){
+      lastSyncErr = e.message;
+      NET = (e instanceof TypeError) ? "off" : "err";
+      setDot(NET === "off" ? "" : "err", NET === "off" ? "offline" : "error");
+      toast(NET === "off" ? "Offline — logging needs a connection" : "Save failed — see Settings › Test connections");
+      render();
+      return false;
+    }
+  };
+  const p = _wq.then(job, job);
+  _wq = p.catch(()=>{});
+  return p;
+}
 
 /* ───────────────────────── UI helpers ───────────────────────── */
 const $ = s => document.querySelector(s);
@@ -522,7 +490,7 @@ function renderToday(){
   const trim = ledger().todayTrim, B = cfg().budget, T = B - trim;
   const left = T - c, over = left < 0, st = streak();
   const needsSetup = !DEMO && (!SEC.anthropic || !SEC.github);
-  const favs = activeFoods().filter(f=>f.fav).slice(0,12);
+  const favs = S.foods.filter(f=>f.fav).slice(0,12);
   const dateStr = new Date().toLocaleDateString("en-GB",{ weekday:"long", day:"numeric", month:"long" });
   let h = "";
   if(needsSetup) h += `<div class="banner"><b>Almost live.</b> Add your Claude API key ${SEC.github?"":"and GitHub token "}in <a href="#" onclick="go('settings');return false" style="color:var(--gold)">Settings</a> to unlock dictation parsing and cloud sync. Manual logging already works.</div>`;
@@ -583,30 +551,37 @@ function bankSheet(){
     <button style="width:100%;margin-top:10px" onclick="closeSheet()">Close</button>`);
 }
 function lastWeight(){ const w = weights(90); return w.length ? w[w.length-1][1] : null; }
-function saveWeight(){ const v = parseFloat($("#win").value); if(!v) return;
-  const r = dayRec(dkey()); r.w = Math.round(v*10)/10; touch(dkey()); toast("Weight saved: "+r.w+" kg"); render(); }
+function saveWeight(){
+  const v = parseFloat($("#win").value); if(!v) return;
+  const k = dkey(), w = Math.round(v*10)/10;
+  write(st => { const r = st.days[k] = st.days[k] || { e:[], u:0 }; r.w = w; r.u = Date.now(); }, "weight")
+    .then(ok => { if(ok) toast("Weight saved: " + w + " kg"); });
+}
 function quickLog(id){ const f = findFood(id); if(!f) return;
   addEntries([{ name:f.n, qty:1, k: f.per==="item"?f.k:Math.round(f.k*(f.g||100)/100), src:"lib", save:false }]); }
 function addEntries(items){
-  const k = dkey(), r = dayRec(k);
-  const added = items.map(it=>{
-    const e = { i:uid(), t:new Date().toTimeString().slice(0,5), n:it.name, q:it.qty||1, k:Math.round(it.k) };
-    r.e.push(e); return e.i;
+  const k = dkey();
+  const entries = items.map(it => ({ i:uid(), t:new Date().toTimeString().slice(0,5), n:it.name, q:it.qty||1, k:Math.round(it.k) }));
+  const ids = entries.map(e => e.i);
+  write(st => {
+    const r = st.days[k] = st.days[k] || { e:[], u:0 };
+    r.e.push(...entries);
+    for(const it of items) if(it.save) saveFoodTo(st, it);
+    r.u = Date.now();
+  }, "log").then(ok => {
+    if(!ok) return;
+    toast(`Logged ${items.length} item${items.length===1?"":"s"} · ${items.reduce((a,x)=>a+Math.round(x.k),0)} kcal`, () => {
+      write(st => { const r = st.days[k]; if(r){ r.e = r.e.filter(e => !ids.includes(e.i)); r.u = Date.now(); } }, "undo log");
+    });
   });
-  for(const it of items) if(it.save) saveToLibrary(it);
-  touch(k);
-  toast(`Logged ${items.length} item${items.length===1?"":"s"} · ${items.reduce((a,x)=>a+Math.round(x.k),0)} kcal`, ()=>{
-    r.e = r.e.filter(e=>!added.includes(e.i)); touch(k);
-  });
-  render();
 }
-function saveToLibrary(it){
-  if(activeFoods().some(f=>f.n.toLowerCase()===it.name.toLowerCase())) return;
+function saveFoodTo(st, it){
+  if(st.foods.some(f=>f.n.toLowerCase()===it.name.toLowerCase())) return;
   const perItem = !(it.grams>0) || it.unit==="item" || (it.qty>=1 && it.unit!=="g" && it.unit!=="ml");
   const f = { i:uid(), n:it.name, a:[], fav:false, u:Date.now() };
   if(perItem){ f.per="item"; f.k=Math.round(it.k/(it.qty||1)); }
   else { f.per = it.unit==="ml" ? "100ml" : "100g"; f.k=Math.round(it.k*100/it.grams); f.g=Math.round(it.grams/(it.qty||1)); }
-  S.foods.push(f); persist();
+  st.foods.push(f);
 }
 function delEntry(id){
   const r = dayRec(dkey()); const e = r.e.find(x=>x.i===id); if(!e) return;
@@ -614,9 +589,13 @@ function delEntry(id){
     <div class="row"><button class="danger" style="flex:1" onclick="reallyDel('${id}')">Remove</button>
     <button style="flex:1" onclick="closeSheet()">Keep</button></div>`);
 }
-function reallyDel(id){ const r = dayRec(dkey()); r.e = r.e.filter(x=>x.i!==id); touch(dkey()); closeSheet(); render(); }
+function reallyDel(id){
+  const k = dkey(); closeSheet();
+  write(st => { const r = st.days[k]; if(r){ r.e = r.e.filter(x => x.i !== id); r.u = Date.now(); } }, "delete entry");
+}
 
 async function doParse(){
+  if(isOffline()){ toast("Offline — logging needs a connection"); return; }
   const text = $("#foodtext").value.trim(); if(!text) return;
   const btn = document.querySelector("#parserow + .row .primary") || document.activeElement;
   sheet(`<h2>Parsing…</h2><div class="sub">Claude is reading your meal.</div>`);
@@ -766,11 +745,11 @@ function renderTrends(){
 /* ───────────────────────── Foods ───────────────────────── */
 function renderFoods(){
   const q = (window._fq||"").toLowerCase();
-  const foods = activeFoods().filter(f=>!q || f.n.toLowerCase().includes(q) || (f.a||[]).some(a=>a.toLowerCase().includes(q)))
+  const foods = S.foods.filter(f=>!q || f.n.toLowerCase().includes(q) || (f.a||[]).some(a=>a.toLowerCase().includes(q)))
                        .sort((a,b)=>(b.fav?1:0)-(a.fav?1:0) || a.n.localeCompare(b.n));
   let h = `<div class="row" style="margin-bottom:10px">
     <input placeholder="Search foods…" value="${esc(window._fq||"")}" oninput="window._fq=this.value;render()">
-    <button class="primary" style="padding:11px 15px;font-size:14.5px;flex:0 0 auto" onclick="foodSheet()">+ Add</button></div>`;
+    <button class="primary${isOffline()?" offv":""}" style="padding:11px 15px;font-size:14.5px;flex:0 0 auto" onclick="foodSheet()">+ Add</button></div>`;
   h += `<div class="card">`;
   h += foods.length ? foods.map(f=>`<div class="foodrow">
       <button class="star ${f.fav?"fav":""}" onclick="toggleFav('${f.i}')">★</button>
@@ -781,7 +760,9 @@ function renderFoods(){
   h += `</div>`;
   return h;
 }
-function toggleFav(id){ const f = findFood(id); f.fav = !f.fav; f.u = Date.now(); persist(); render(); }
+function toggleFav(id){
+  write(st => { const f = st.foods.find(x => x.i === id); if(f){ f.fav = !f.fav; f.u = Date.now(); } }, "star food");
+}
 function foodSheet(id){
   const f = id ? findFood(id) : { n:"", a:[], per:"item", k:"", fav:false };
   sheet(`<h2>${id?"Edit":"New"} food</h2>
@@ -800,10 +781,16 @@ function foodSave(id){
   const n = $("#fn").value.trim(); if(!n) return;
   const data = { n, a:$("#fa").value.split(",").map(s=>s.trim()).filter(Boolean),
     per:$("#fper").value, k:parseFloat($("#fk").value)||0, u:Date.now() };
-  if(id){ Object.assign(findFood(id), data); } else { S.foods.push({ i:uid(), fav:false, ...data }); }
-  persist(); closeSheet(); render();
+  closeSheet();
+  write(st => {
+    if(id){ const f = st.foods.find(x => x.i === id); if(f) Object.assign(f, data); }
+    else st.foods.push({ i:uid(), fav:false, ...data });
+  }, "food save");
 }
-function foodDel(id){ const f = S.foods.find(f=>f.i===id); if(f){ f.del = 1; f.u = Date.now(); } persist(); closeSheet(); render(); }
+function foodDel(id){
+  closeSheet();
+  write(st => { st.foods = st.foods.filter(f => f.i !== id); }, "food delete");
+}
 
 /* ───────────────────────── Settings ───────────────────────── */
 function renderSettings(){
@@ -832,24 +819,30 @@ function renderSettings(){
     <div class="sub" style="margin-top:8px">Keys are stored only on this device, never in the synced data.</div>
   </div>
   <div class="card"><h3>Data</h3>
-    <div class="row"><button style="flex:1" onclick="exportData()">Export backup</button>
-    <button style="flex:1" onclick="importSheet()">Import</button></div>
+    <div class="row"><button style="flex:1" onclick="createBackup()">Back up</button>
+    <button style="flex:1" onclick="backupSheet()">Restore</button>
+    <button style="flex:1" onclick="exportData()">Export</button></div>
     <div class="sub" style="margin-top:8px">Balance v${APP_VERSION} · ${Object.keys(S.days).length} days · ${S.foods.length} foods · synced to ${esc(SEC.repo)}</div>
   </div>`;
 }
 function saveSettings(){
-  const c = cfg();
-  c.budget = parseInt($("#s-budget").value)||2000;
-  c.maintenance = parseInt($("#s-maint").value)||2400;
-  c.goal = parseFloat($("#s-goal").value)||null;
-  c.cap = parseInt($("#s-cap").value)||300;
-  delete c.floor; delete c.protein;
-  c.u = Date.now();
+  // §4: empty/invalid field = keep previous value. Never substitute defaults.
+  const num = v => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
+  const patch = {};
+  const b = num($("#s-budget").value); if(b !== undefined) patch.budget = Math.round(b);
+  const m = num($("#s-maint").value);  if(m !== undefined) patch.maintenance = Math.round(m);
+  const cp = num($("#s-cap").value);   if(cp !== undefined) patch.cap = Math.round(cp);
+  const g = $("#s-goal").value.trim(); if(g !== "") patch.goal = num(g) || null;
   SEC.anthropic = $("#s-anthropic").value.replace(/\s/g,"");
   SEC.model = $("#s-model").value;
   SEC.github = $("#s-github").value.replace(/[^A-Za-z0-9_]/g,"");
   SEC.repo = $("#s-repo").value.trim().replace(/^https?:\/\/github\.com\//,"").replace(/\/$/,"");
-  saveSec(); persist(); toast("Saved"); pull(); render();
+  saveSec();
+  write(st => {
+    Object.assign(st.config, patch);
+    delete st.config.floor; delete st.config.protein; delete st.config.wipedAt;
+    st.config.u = Date.now();
+  }, "settings").then(ok => { if(ok) toast("Saved"); });
 }
 function exportData(){
   const blob = new Blob([JSON.stringify(S,null,1)], {type:"application/json"});
@@ -857,15 +850,50 @@ function exportData(){
   a.href = URL.createObjectURL(blob);
   a.download = "balance-backup-"+dkey()+".json"; a.click();
 }
-function importSheet(){
-  sheet(`<h2>Import backup</h2><label>Paste backup JSON</label><textarea id="imp" style="height:120px"></textarea>
-    <div class="row" style="margin-top:12px"><button class="primary danger" style="flex:1" onclick="doImport()">Replace my data</button>
+/* §8: backups are dated snapshots inside the data repo; restore is a normal write. */
+async function createBackup(){
+  if(DEMO || !ghReady() || isOffline()){ toast("Backups need the GitHub connection"); return; }
+  setDot("pending","saving");
+  try{
+    const name = "backups/" + new Date().toISOString().slice(0,19).replace(/:/g,"-") + ".json";
+    const body = { message:"backup", content: b64enc(JSON.stringify(S)) };
+    const res = await fetch(ghUrl(name), { method:"PUT", headers: ghHeaders(), body: JSON.stringify(body) });
+    if(!res.ok) throw new Error(await ghErr(res));
+    setDot("ok","live"); toast("Backup created");
+  }catch(e){ lastSyncErr = e.message; setDot("err","error"); toast("Backup failed"); }
+}
+async function backupSheet(){
+  if(DEMO || !ghReady() || isOffline()){ toast("Backups need the GitHub connection"); return; }
+  sheet(`<h2>Restore a backup</h2><div class="sub">Loading…</div>`);
+  try{
+    const res = await fetch(ghUrl("backups"), { headers: ghHeaders() });
+    if(res.status === 404){ sheet(`<h2>Restore a backup</h2><div class="sub">No backups yet — create one first.</div>
+      <button style="width:100%;margin-top:12px" onclick="closeSheet()">Close</button>`); return; }
+    if(!res.ok) throw new Error(await ghErr(res));
+    const files = (await res.json()).filter(f => f.name.endsWith(".json"))
+      .sort((a,b) => b.name.localeCompare(a.name)).slice(0, 20);
+    sheet(`<h2>Restore a backup</h2>
+      ${files.map(f => `<div class="wkrow" style="cursor:pointer" onclick="restoreBackup('${f.path}')">
+        <span class="num">${f.name.replace(".json","").replace("T"," · ").replace(/-(\d\d)-(\d\d)$/, ":$1:$2")}</span><span class="sub">restore ›</span></div>`).join("")}
+      <button style="width:100%;margin-top:12px" onclick="closeSheet()">Cancel</button>`);
+  }catch(e){ sheet(`<h2>Restore a backup</h2><div class="sub">${esc(e.message)}</div>
+    <button style="width:100%;margin-top:12px" onclick="closeSheet()">Close</button>`); }
+}
+async function restoreBackup(path){
+  sheet(`<h2>Replace current data?</h2><div class="sub">Your data becomes exactly this snapshot. The current state is not saved unless you backed it up.</div>
+    <div class="row" style="margin-top:14px"><button class="primary danger" style="flex:1" onclick="reallyRestore('${path}')">Restore</button>
     <button onclick="closeSheet()">Cancel</button></div>`);
 }
-function doImport(){
-  try{ const j = JSON.parse($("#imp").value); if(!j.days || !j.config) throw 0;
-    S = j; persist(); closeSheet(); toast("Imported"); render();
-  }catch(e){ toast("That didn't look like a Balance backup."); }
+async function reallyRestore(path){
+  closeSheet();
+  try{
+    const res = await fetch(ghUrl(path), { headers: ghHeaders() });
+    if(!res.ok) throw new Error(await ghErr(res));
+    const snap = JSON.parse(b64dec((await res.json()).content));
+    if(!snap.days || !snap.config) throw new Error("not a Balance snapshot");
+    write(st => { for(const k of Object.keys(st)) delete st[k]; Object.assign(st, snap); }, "restore backup")
+      .then(ok => { if(ok) toast("Restored"); });
+  }catch(e){ toast("Restore failed: " + e.message); }
 }
 
 /* ───────────────────────── demo ───────────────────────── */
@@ -911,10 +939,9 @@ function render(){
   hideChip();
   $("#main").innerHTML = { today:renderToday, trends:renderTrends, foods:renderFoods, settings:renderSettings }[view]();
 }
-purgeWiped();
-stampDays();
 go("today");
-if(ghReady()) pull(); else setDot("", DEMO ? "demo" : "local");
+fetchState();
+document.addEventListener("visibilitychange", () => { if(!document.hidden) fetchState(); });
 if("serviceWorker" in navigator && !DEMO && location.protocol==="https:")
   navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
