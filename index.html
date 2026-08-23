@@ -151,10 +151,15 @@ nav button.on{color:var(--accent);background:var(--tint);font-weight:700;}
 .actrow .info .n{font-size:15px;font-weight:600;}
 .pips{display:flex;gap:4px;margin-top:7px;flex-wrap:wrap;}
 .pip{width:8px;height:8px;border-radius:50%;background:var(--tonal2);}
-.pip.f{background:var(--green);}
-button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:center;padding-top:10px;padding-bottom:10px;}
-.actdone svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;display:block;}
-.actdone.did{background:color-mix(in srgb,var(--green) 12%,#fff);color:var(--green);opacity:1;}
+.pip.f{background:var(--accent);}
+/* check disc: faded promise → kept promise. Both states accent-colored;
+   fill deepens on completion, geometry never moves. */
+button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:39px;height:39px;padding:0;
+  background:color-mix(in srgb,var(--accent) 10%,#fff);border:1.75px solid var(--accent);color:var(--accent);}
+/* resting = dock-icon pen (V3); filled = the approved solid check (V1) */
+.actdone svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block;}
+.actdone.did{background:var(--accent);color:#fff;opacity:1;}
+.actdone.did svg{stroke-width:3.25;}
 /* the wall: usage-grid style — one flat square per day, months as blocks
    (the 1st starts a new row), intensity = activities logged that day,
    color = allegiance (green living run / brick fallen). Unlabeled. */
@@ -179,9 +184,9 @@ button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:cen
 
 <nav>
   <button id="tab-today" onclick="go('today')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Today</button>
+  <button id="tab-activity" onclick="go('activity')"><svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h5L11 21l8-10.5h-5L13 3z"/></svg>Activity</button>
   <button id="tab-trends" onclick="go('trends')"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Trends</button>
   <button id="tab-foods" onclick="go('foods')"><svg viewBox="0 0 24 24"><path d="M5 3v18M5 10c3 0 4-2 4-7M12 3v18M12 3c4 1 4 8 0 9"/><path d="M18 3c2 2 3 5 3 8s-1 4-3 4v6"/></svg>Foods</button>
-  <button id="tab-activity" onclick="go('activity')"><svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h5L11 21l8-10.5h-5L13 3z"/></svg>Activity</button>
   <button id="tab-settings" onclick="go('settings')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>Settings</button>
 </nav>
 
@@ -191,7 +196,7 @@ button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:cen
 
 <script>
 "use strict";
-const APP_VERSION = "3.0";
+const APP_VERSION = "3.0.1";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -449,10 +454,19 @@ async function fetchState(){
 // One user action = one remote write. In-flight writes serialize (not an
 // offline queue: nothing persists; offline blocks writes before they start).
 let _wq = Promise.resolve();
+// v3.0.1 optimistic UI: pre-write snapshot for rollback; set on the first
+// in-flight optimistic write, cleared on success or restored on failure.
+let _optPrev = null;
 function write(mutate, label){
   if(DEMO){ mutate(S); stampToday(S); cache(); render(); return Promise.resolve(true); }
   if(!ghReady()){ toast("Add your GitHub token in Settings first"); return Promise.resolve(false); }
   if(isOffline() && NET !== "boot"){ toast("Offline — logging needs a connection"); return Promise.resolve(false); }
+  // v3.0.1: gates passed — flip the UI now, reconcile truth behind it.
+  // Pure cosmetics on an in-flight request: no queue, no merge; the
+  // authoritative result below replaces this guess either way.
+  if(!_optPrev) _optPrev = structuredClone(S);
+  try{ mutate(S); stampToday(S); }catch(e){}
+  cache(); render();
   const job = async () => {
     setDot("pending", "saving");
     try{
@@ -466,14 +480,16 @@ function write(mutate, label){
         const put = await fetch(ghUrl(), { method:"PUT", headers: ghHeaders(), body: JSON.stringify(body) });
         if(put.status === 409 || put.status === 422) continue;     // conflict: refetch + reapply
         if(!put.ok) throw new Error(await ghErr(put));
-        S = st; cache(); NET = "on"; lastSyncErr = null;
+        S = st; _optPrev = null; cache(); NET = "on"; lastSyncErr = null;
         setDot("ok", "live"); render();
         return true;
       }
+      if(_optPrev){ S = _optPrev; _optPrev = null; cache(); }        // roll back the guess
       lastSyncErr = "conflict retries exhausted";
       setDot("err", "error"); toast("Sync conflict — try again"); render();
       return false;
     }catch(e){
+      if(_optPrev){ S = _optPrev; _optPrev = null; cache(); }        // roll back the guess
       lastSyncErr = e.message;
       NET = (e instanceof TypeError) ? "off" : "err";
       setDot(NET === "off" ? "" : "err", NET === "off" ? "offline" : "error");
@@ -740,48 +756,62 @@ function manualLog(){
 
 /* ───────────────────────── Trends ───────────────────────── */
 function chartWeight(n){
-  const pts = weights(n); if(pts.length < 2) return `<div class="sub">Log your weight a few mornings and the trend appears here.</div>`;
-  const sm = ema(pts);
-  const W = 340, H = 150, P = 24;
-  // §13: stepped goal line from per-day snapshots, carrying the last known value forward.
-  let lastG = cfg().goal ?? null;
-  const goals = pts.map(([k])=>{ const r = S.days[k]; if(r && r.g !== undefined && r.g !== null) lastG = r.g; return lastG; });
-  const liveGoals = goals.filter(g=>g);
-  const ys = pts.map(p=>p[1]).concat(liveGoals);
-  let lo = Math.min(...ys), hi = Math.max(...ys); const pad = Math.max((hi-lo)*0.15, 0.4); lo-=pad; hi+=pad;
-  const X = i => P + i*(W-P-8)/(pts.length-1);
+  // v3.0.1: fixed last-n-days date axis with chartCals' exact x-metrics so
+  // the two charts align date-for-date. EMA and the goal walk cover the
+  // FULL 90-day history (one truth — the same line the trend KPI reads);
+  // only the rendering is clipped to the window.
+  const all = weights(90);
+  const d0 = new Date(); d0.setDate(d0.getDate()-n+1);
+  const startK = dkey(d0);
+  const pts = all.filter(([k]) => k >= startK);
+  if(pts.length < 2) return `<div class="sub">Log your weight a few mornings and the trend appears here.</div>`;
+  const sm = ema(all).filter(([k]) => k >= startK);
+  const W = 340, H = 150, P = 6, band = (W-2*P)/n;
+  const X = k => P + (daysBetween(startK, k) + 0.5) * band;
   const Y = v => H-16 - (v-lo)*(H-28)/(hi-lo);
-  const line = sm.map((p,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(p[1]).toFixed(1)).join(" ");
-  const cur = pts[pts.length-1][1];
-  // inset ruler: faint lines at clean intervals, small values, behind the data
+  // §13: stepped goal from per-day snapshots, walked over the full history
+  // so the value entering the window is the historic snapshot.
+  let lastG = cfg().goal ?? null;
+  const goalByK = {};
+  for(const [k] of all){ const r = S.days[k]; if(r && r.g !== undefined && r.g !== null) lastG = r.g; goalByK[k] = lastG; }
+  const winGoals = pts.map(([k]) => goalByK[k]);
+  const liveGoals = winGoals.filter(g => g);
+  const ys = pts.map(p=>p[1]).concat(sm.map(p=>p[1])).concat(liveGoals);
+  let lo = Math.min(...ys), hi = Math.max(...ys); const pad = Math.max((hi-lo)*0.15, 0.4); lo-=pad; hi+=pad;
+  const line = sm.map((p,i)=>(i?"L":"M")+X(p[0]).toFixed(1)+" "+Y(p[1]).toFixed(1)).join(" ");
+  const lastK = pts[pts.length-1][0], cur = pts[pts.length-1][1];
+  // ruler lives BEHIND the data: full-width faint lines, labels at the left
+  // edge, no reserved gutter (Daniel, 2026-08-23 — exact alignment wins)
   const range = hi - lo;
   const step = [0.5, 1, 2, 5, 10].find(s => range / s <= 6) || 10;
   let ruler = "";
   for(let v = Math.ceil(lo/step)*step; v <= hi; v += step){
-    ruler += `<line x1="${P-16}" x2="${W-8}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--border)" stroke-width="0.5"/>
-      <text x="${P-16}" y="${(Y(v)-2.5).toFixed(1)}" font-size="8" fill="var(--tonal2)">${step<1?v.toFixed(1):Math.round(v)}</text>`;
+    ruler += `<line x1="${P}" x2="${W-P}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--border)" stroke-width="0.5"/>
+      <text x="${P+2}" y="${(Y(v)-2.5).toFixed(1)}" font-size="8" fill="var(--tonal2)">${step<1?v.toFixed(1):Math.round(v)}</text>`;
   }
   let goal = "", goalHidden = false;
   if(liveGoals.length){
     let path = "", prev = null;
-    goals.forEach((g,i)=>{ if(!g) return;
-      if(prev === null) path += `M${X(i).toFixed(1)} ${Y(g).toFixed(1)}`;
-      else path += `L${X(i).toFixed(1)} ${Y(prev).toFixed(1)}` + (g!==prev?` L${X(i).toFixed(1)} ${Y(g).toFixed(1)}`:"");
+    pts.forEach(([k],i)=>{ const g = winGoals[i]; if(!g) return;
+      if(prev === null) path += `M${X(k).toFixed(1)} ${Y(g).toFixed(1)}`;
+      else path += `L${X(k).toFixed(1)} ${Y(prev).toFixed(1)}` + (g!==prev?` L${X(k).toFixed(1)} ${Y(g).toFixed(1)}`:"");
       prev = g; });
-    path += `L${(W-8).toFixed(1)} ${Y(prev).toFixed(1)}`;
+    path += `L${(W-P).toFixed(1)} ${Y(prev).toFixed(1)}`;
     goalHidden = Math.abs(Y(prev) - Y(cur)) < 16; // collision: weight wins
     goal = `<path d="${path}" fill="none" stroke="var(--gold)" stroke-dasharray="4 4" stroke-width="1"/>` +
       (goalHidden ? "" : `<text x="${W-10}" y="${(Y(prev)-4).toFixed(1)}" text-anchor="end" fill="var(--gold)">goal ${prev}</text>`);
   }
   const chipFor = (k,w) => `showChip(event,'${new Date(k+"T12:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"})} · ${w}')`;
+  // current-weight numeral rides its dot, not the chart edge
+  const curX = Math.min(Math.max(X(lastK), P+18), W-18);
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">
     ${ruler}
-    <line x1="${P}" x2="${W-8}" y1="${H-16}" y2="${H-16}" stroke="var(--border)" />
+    <line x1="${P}" x2="${W-P}" y1="${H-16}" y2="${H-16}" stroke="var(--border)" />
     ${goal}
     <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
-    ${pts.map((p,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="2.8" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.2" opacity="0.8"/>
-      <circle cx="${X(i).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="11" fill="transparent" onclick="${chipFor(p[0], p[1])}"/>`).join("")}
-    <text x="${W-8}" y="${(Y(cur)-9).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--ink)" font-weight="700" class="num">${cur}</text>
+    ${pts.map(p=>`<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="2.8" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.2" opacity="0.8"/>
+      <circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="11" fill="transparent" onclick="${chipFor(p[0], p[1])}"/>`).join("")}
+    <text x="${curX.toFixed(1)}" y="${(Y(cur)-9).toFixed(1)}" text-anchor="middle" font-size="11" fill="var(--ink)" font-weight="700" class="num">${cur}</text>
   </svg>`;
 }
 function chartCals(n){
@@ -818,14 +848,14 @@ function chartCals(n){
 }
 function renderTrends(){
   const wc = weeklyCloses();
-  const w = weights(90); const first = w[0], last = w[w.length-1];
+  const w = weights(45); const first = w[0], last = w[w.length-1];
   const delta = first && last && w.length>1 ? (ema(w)[w.length-1][1] - w[0][1]) : null;
   const bd = bankDisplay();
   let h = `<div class="kpis">
-    <div class="kpi"><div class="l">90-day trend</div><div class="v" style="color:${delta<0?"var(--ok)":"var(--ink)"}">${delta===null?"–":(delta>0?"+":"")+delta.toFixed(1)+" kg"}</div></div>
+    <div class="kpi"><div class="l">45-day trend</div><div class="v" style="color:${delta<0?"var(--ok)":"var(--ink)"}">${delta===null?"–":(delta>0?"+":"")+delta.toFixed(1)+" kg"}</div></div>
     <div class="kpi" onclick="bankSheet()" style="cursor:pointer"><div class="l">Calorie bank</div><div class="v" style="color:${bd.col}">${bd.v}</div></div>
   </div>`;
-  h += `<div class="card"><h3>Weight — dots are mornings, line is the truth</h3>${chartWeight(90)}</div>`;
+  h += `<div class="card"><h3>Weight — dots are mornings, line is the truth</h3>${chartWeight(14)}</div>`;
   h += `<div class="card"><h3>Last 14 days vs target</h3>${chartCals(14)}</div>`;
   h += `<div class="card"><h3>Weekly closes — vs maintenance</h3>`;
   h += wc.length ? wc.map(([wk,x])=>{
@@ -1066,7 +1096,7 @@ function renderActivity(){
     return `<div class="actrow" onclick="actSheet('${a.id}')">
       <span class="info"><span class="n">${esc(a.name)}</span>${a.desc ? `<div class="sub">${esc(a.desc)}</div>` : ""}
         <div class="pips">${pips}</div></span>
-      <button class="actdone sm${didToday ? " did" : " primary"}" ${didToday ? "disabled" : ""} onclick="event.stopPropagation();actLog('${a.id}')"><svg viewBox="0 0 24 24"><path d="M4.5 12.5l5.2 5.2L19.5 6.5"/></svg></button>
+      <button class="actdone${didToday ? " did" : ""}" ${didToday ? "disabled" : ""} onclick="event.stopPropagation();actLog('${a.id}')"><svg viewBox="0 0 24 24"><path d="M5.5 12.5l4.7 4.7L18.5 7.5"/></svg></button>
     </div>`;
   }).join("") : `<div class="sub">Commit to something — push-ups every morning, spin class twice a week. Each activity sets how many times per week it happens; the moment a week's quota becomes impossible, the whole streak breaks. Unforgiving on purpose.</div>`;
   h += `</div>`;
