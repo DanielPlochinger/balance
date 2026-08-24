@@ -161,6 +161,14 @@ button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:cen
 .actdone svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:3.25;stroke-linecap:round;stroke-linejoin:round;display:block;position:relative;z-index:1;}
 .actdone.did{opacity:1;}
 .actdone.did::before{content:"";position:absolute;inset:1.5px;border-radius:999px;background:var(--accent);}
+/* Arrange sheet (v3.0.2): drag lives only here, from the grip only */
+.arrrow{display:flex;align-items:center;gap:12px;user-select:none;-webkit-user-select:none;}
+.arrrow .grip{padding:8px;margin:-8px;touch-action:none;cursor:grab;}
+.arrrow .grip svg{width:20px;height:20px;stroke:var(--muted);fill:none;stroke-width:1.9;stroke-linecap:round;display:block;}
+#arrlist .sheet-item{transition:transform .18s ease;}
+#arrlist .sheet-item.lift{transition:none;box-shadow:0 10px 26px rgba(20,26,34,.22);position:relative;z-index:5;
+  border-color:color-mix(in srgb,var(--accent) 40%,transparent);}
+#arrlist .sheet-item.lift .grip svg{stroke:var(--accent);}
 /* the wall: usage-grid style — one flat square per day, months as blocks
    (the 1st starts a new row), intensity = activities logged that day,
    color = allegiance (green living run / brick fallen). Unlabeled. */
@@ -197,7 +205,7 @@ button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:cen
 
 <script>
 "use strict";
-const APP_VERSION = "3.0.1";
+const APP_VERSION = "3.0.2";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -1075,18 +1083,17 @@ function actLedger(){
   return _A;
 }
 function findAct(id){ return (S.activities || []).find(a => a.id === id); }
+// v3.0.2 manual order: unset orders sink to creation order (stable pre-arrange)
+function actOrderCmp(a, b){
+  return ((a.order ?? Infinity) - (b.order ?? Infinity)) || a.created.localeCompare(b.created) || a.name.localeCompare(b.name);
+}
 
 function renderActivity(){
   const A = actLedger(), today = A.today, curMon = A.curMon;
   let h = "";
-  // rows: everything still carrying this week's expectations (incl. retiring after it)
-  const rows = A.acts.filter(a => !a.retiredFrom || curMon < a.retiredFrom);
-  const dayIdx = daysBetween(curMon, today);
-  const slack = a => {
-    const need = A.targetFor(a, curMon) - A.doneInWeek(a, curMon);
-    return need <= 0 ? 99 : (7 - dayIdx) - need;    // closest-to-impossible first
-  };
-  rows.sort((a, b) => slack(a) - slack(b) || a.name.localeCompare(b.name));
+  // rows: everything still carrying this week's expectations (incl. retiring after it).
+  // v3.0.2: MANUAL order (Arrange sheet) — rows never jump; pips carry urgency.
+  const rows = A.acts.filter(a => !a.retiredFrom || curMon < a.retiredFrom).sort(actOrderCmp);
   h += `<div class="card">`;
   h += rows.length ? rows.map(a => {
     const t = A.targetFor(a, curMon), done = A.doneInWeek(a, curMon);
@@ -1101,7 +1108,7 @@ function renderActivity(){
     </div>`;
   }).join("") : `<div class="sub">Commit to something — push-ups every morning, spin class twice a week. Each activity sets how many times per week it happens; the moment a week's quota becomes impossible, the whole streak breaks. Unforgiving on purpose.</div>`;
   h += `</div>`;
-  h += `<div class="row" style="justify-content:center;margin-bottom:14px"><button class="ghost" onclick="newActSheet()">+ New activity</button></div>`;
+  h += `<div class="row" style="justify-content:center;gap:14px;margin-bottom:14px"><button class="ghost" onclick="newActSheet()">+ New activity</button>${rows.length > 1 ? `<button class="ghost" onclick="arrangeSheet()">Arrange</button>` : ""}</div>`;
   h += renderWall(A);
   window._justLogged = null;
   return h;
@@ -1172,7 +1179,10 @@ function actCreate(){
   const name = $("#an").value.trim(); if(!name) return;
   const desc = $("#ad").value.trim(), p = actPerWeekInput(), k = dkey();
   closeSheet();
-  write(st => { st.activities.push({ id: uid(), name, desc, targets: [{ from: k, perWeek: p }], created: k }); }, "activity create");
+  write(st => {
+    const maxO = Math.max(-1, ...st.activities.map(a => a.order ?? -1));
+    st.activities.push({ id: uid(), name, desc, targets: [{ from: k, perWeek: p }], created: k, order: maxO + 1 });
+  }, "activity create");
 }
 function actSheet(id){
   const a = findAct(id); if(!a) return;
@@ -1234,6 +1244,73 @@ function actDelete(id){
     if((st.activityLogs || []).some(l => l.activityId === id)) return;   // facts are permanent
     st.activities = (st.activities || []).filter(a => a.id !== id);
   }, "activity delete");
+}
+
+/* v3.0.2 Arrange sheet — "the mode is a place": drag exists only inside
+   this sheet, from the grip only; Done commits ONE write; Cancel or
+   tap-outside discards. Scales via sheet-body scroll + edge auto-scroll. */
+function arrangeSheet(){
+  const A = actLedger();
+  window._arr = A.acts.filter(a => !a.retiredFrom || A.curMon < a.retiredFrom)
+    .sort(actOrderCmp).map(a => a.id);
+  sheet(`<h2>Arrange</h2><div id="arrlist"></div>`,
+    { footer: `<button onclick="closeSheet()">Cancel</button>
+      <button class="primary" style="flex:1" onclick="arrangeSave()">Done</button>` });
+  renderArrList();
+}
+function renderArrList(){
+  const list = $("#arrlist"); if(!list) return;
+  const byId = {}; for(const a of S.activities || []) byId[a.id] = a;
+  window._arr = window._arr.filter(id => byId[id]);        // remote truth may have removed one
+  list.innerHTML = window._arr.map(id => `
+    <div class="sheet-item arrrow" data-id="${id}">
+      <span style="flex:1;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(byId[id].name)}</span>
+      <span class="grip"><svg viewBox="0 0 24 24"><path d="M4 9h16M4 15h16"/></svg></span>
+    </div>`).join("");
+  for(const g of list.querySelectorAll(".grip")) g.addEventListener("pointerdown", arrDragStart);
+}
+function arrDragStart(e){
+  const grip = e.currentTarget, row = grip.closest(".sheet-item");
+  const list = $("#arrlist"), rows = [...list.children];
+  const idx0 = rows.indexOf(row), step = row.offsetHeight + 9;   // 9px sheet-item gap
+  const body = $("#sheetbody"), startScroll = body.scrollTop, y0 = e.clientY;
+  let idx = idx0;
+  e.preventDefault();
+  try{ grip.setPointerCapture(e.pointerId); }catch(_){}
+  row.classList.add("lift");
+  const move = ev => {
+    const b = body.getBoundingClientRect();
+    if(ev.clientY < b.top + 44) body.scrollTop -= 7;              // edge auto-scroll:
+    else if(ev.clientY > b.bottom - 44) body.scrollTop += 7;      // any length reachable
+    const dy = ev.clientY - y0 + (body.scrollTop - startScroll);
+    const t = Math.min(rows.length - 1, Math.max(0, idx0 + Math.round(dy / step)));
+    if(t !== idx){
+      idx = t;
+      rows.forEach((r, i) => { if(r === row) return;
+        const off = (idx0 < idx && i > idx0 && i <= idx) ? -step
+                  : (idx0 > idx && i >= idx && i < idx0) ? step : 0;
+        r.style.transform = off ? `translateY(${off}px)` : ""; });
+    }
+    row.style.transform = `translateY(${dy}px) scale(1.02)`;
+  };
+  const up = () => {
+    grip.removeEventListener("pointermove", move);
+    grip.removeEventListener("pointerup", up);
+    grip.removeEventListener("pointercancel", up);
+    const arr = window._arr, [m] = arr.splice(idx0, 1);
+    arr.splice(idx, 0, m);
+    renderArrList();
+  };
+  grip.addEventListener("pointermove", move);
+  grip.addEventListener("pointerup", up);
+  grip.addEventListener("pointercancel", up);
+}
+function arrangeSave(){
+  const ids = window._arr.slice();
+  closeSheet();
+  write(st => {
+    ids.forEach((id, i) => { const a = (st.activities || []).find(x => x.id === id); if(a) a.order = i; });
+  }, "arrange activities");
 }
 
 /* ───────────────────────── demo ───────────────────────── */
