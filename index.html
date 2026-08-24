@@ -152,14 +152,15 @@ nav button.on{color:var(--accent);background:var(--tint);font-weight:700;}
 .pips{display:flex;gap:4px;margin-top:7px;flex-wrap:wrap;}
 .pip{width:8px;height:8px;border-radius:50%;background:var(--tonal2);}
 .pip.f{background:var(--accent);}
-/* check disc: faded promise → kept promise. Both states accent-colored;
-   fill deepens on completion, geometry never moves. */
+/* check control (catalog V12): a checkbox, not a capsule — the constant
+   ring frames it; the interior is always lavender; done condenses a solid
+   core with a lavender sliver against the ring. White check throughout.
+   Geometry frozen across states; only saturation changes. */
 button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:39px;height:39px;padding:0;
-  background:color-mix(in srgb,var(--accent) 10%,#fff);border:1.75px solid var(--accent);color:var(--accent);}
-/* resting = dock-icon pen (V3); filled = the approved solid check (V1) */
-.actdone svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block;}
-.actdone.did{background:var(--accent);color:#fff;opacity:1;}
-.actdone.did svg{stroke-width:3.25;}
+  position:relative;background:color-mix(in srgb,var(--accent) 26%,#fff);border:2.2px solid var(--accent);color:#fff;}
+.actdone svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:3.25;stroke-linecap:round;stroke-linejoin:round;display:block;position:relative;z-index:1;}
+.actdone.did{opacity:1;}
+.actdone.did::before{content:"";position:absolute;inset:1.5px;border-radius:999px;background:var(--accent);}
 /* the wall: usage-grid style — one flat square per day, months as blocks
    (the 1st starts a new row), intensity = activities logged that day,
    color = allegiance (green living run / brick fallen). Unlabeled. */
