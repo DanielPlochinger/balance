@@ -1,7 +1,7 @@
 {
   "name": "Balance",
   "short_name": "Balance",
-  "description": "Personal calorie ledger — budget, bank, cheat days, weight trends.",
+  "description": "Personal calorie ledger — budget, bank, streaks, weight trends.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

@@ -205,7 +205,7 @@ button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:cen
 
 <script>
 "use strict";
-const APP_VERSION = "3.0.2";
+const APP_VERSION = "3.1";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -264,19 +264,29 @@ function ledger(){
   let debt = 0, plan = [];
   if(keys.length){
     let k = keys[0];
+    // v3.1 §1: a broken streak zeroes the ledger. Both signs belong to the run
+    // that just ended — debt, the schedule and the bank all go together.
+    const reset = () => { debt = 0; plan = []; for(const d of deps){ d.left = 0; d.dead = true; } };
     while(k < today){
       for(const d of deps) if(!d.dead && d.expires <= k){ d.left = 0; d.dead = true; }
       const r = S.days[k];
       const trim = plan.length ? plan[0] : 0;
       if(trim) trims[k] = trim;
       if(!tracked(r)){
-        // §3: unlogged mid-plan = miss; fresh schedule from the next day.
-        if(plan.length) plan = schedule(debt);
+        reset();                                 // v3.1: an unlogged day is a break
         k = addDaysK(k, 1); continue;
       }
       if(plan.length) plan.shift();
       const B = dayBudget(r), C = dayCap(r);
       const sav = Math.round(B - consumed(r));
+      // v3.1: a miss is a break, and the day is void — no partial repayment,
+      // no deposit, no debt. trims[k] stands: the target was real, and missed.
+      if(trim && sav < trim){
+        missDays[k] = true;
+        settle[k] = { dep: 0, repaid: 0, draw: 0, debtAdd: 0 };
+        reset();
+        k = addDaysK(k, 1); continue;
+      }
       if(sav >= 0){
         let pay = Math.min(sav, trim) + Math.min(Math.max(sav - trim, 0), C);
         pay = Math.min(pay, debt);
@@ -287,9 +297,6 @@ function ledger(){
           const dep = Math.min(Math.max(sav - pay, 0), allowanceLeft);
           if(dep > 0){ deps.push({ k, amt: dep, left: dep, expires: addDaysK(k, 10) }); settle[k].dep = dep; }
           plan = [];
-        } else if(sav < trim){
-          missDays[k] = true;                    // partial repayment counted, but a miss
-          plan = schedule(debt);
         } else {
           // trim resolved; good news shortens the schedule from the back
           let sum = plan.reduce((a,x)=>a+x, 0);
@@ -305,9 +312,7 @@ function ledger(){
         for(const d of deps){ if(need <= 0) break; if(d.left <= 0) continue;
           const take = Math.min(d.left, need); d.left -= take; need -= take; used += take; }
         settle[k] = { dep: 0, repaid: 0, draw: used, debtAdd: Math.max(need, 0) };
-        if(trim) missDays[k] = true;             // trim entirely unresolved
-        if(need > 0){ debt += need; plan = schedule(debt); }
-        else if(trim) plan = schedule(debt);
+        if(need > 0){ debt += need; plan = schedule(debt); }   // over with a trim is a break, handled above
       }
       k = addDaysK(k, 1);
     }
@@ -451,6 +456,7 @@ async function fetchState(){
   try{
     const { state } = await ghGetState();
     if(state){ S = norm(state); cache(); }
+    _lastBackup = null;                    // re-look-up like every other synced fact
     NET = "on"; lastSyncErr = null; setDot("ok", "live"); render();
   }catch(e){
     lastSyncErr = e.message;
@@ -959,7 +965,9 @@ function renderSettings(){
     <div class="row"><button class="md" style="flex:1" onclick="createBackup()">Back up</button>
     <button class="md" style="flex:1" onclick="backupSheet()">Restore</button>
     <button class="md" style="flex:1" onclick="exportData()">Export</button></div>
+    <div class="row" style="margin-top:8px"><button class="danger md" style="flex:1" onclick="clearDataSheet()">Clear logged data…</button></div>
     <div class="sub" style="margin-top:8px">Balance v${APP_VERSION} · ${Object.keys(S.days).length} days · ${S.foods.length} foods · synced to ${esc(SEC.repo)}</div>
+    <div class="sub" id="lastbk" style="margin-top:2px">${backupStamp()}</div>
   </div>`;
 }
 function saveSettings(){
@@ -987,6 +995,34 @@ function exportData(){
   a.href = URL.createObjectURL(blob);
   a.download = "balance-backup-"+dkey()+".json"; a.click();
 }
+/* v3.1 §3: newest backup shown in Settings › Data. Looked up once per app
+   load (and refreshed after we write one); silently absent offline. */
+let _lastBackup = null, _bkLooking = false;   // null = not looked up, "" = none
+const ISO_BK = /^\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d$/;
+function fmtBackup(name){
+  const [d, t] = name.split("T");
+  return new Date(d + "T12:00").toLocaleDateString("en-GB", { day:"numeric", month:"short" })
+    + " " + (t || "").slice(0,5).replace("-", ":");
+}
+function backupStamp(){ return _lastBackup ? "Last backup " + fmtBackup(_lastBackup) : ""; }
+function paintBackupStamp(){ const el = $("#lastbk"); if(el) el.textContent = backupStamp(); }
+async function findLastBackup(){
+  if(DEMO || _bkLooking || _lastBackup !== null || !ghReady() || isOffline()) return;
+  _bkLooking = true;
+  try{
+    const res = await fetch(ghUrl("backups") + "?t=" + Date.now(), { headers: ghHeaders() });
+    if(res.status === 404) _lastBackup = "";
+    else if(!res.ok) return;
+    else {
+      const names = (await res.json()).map(f => f.name.replace(".json",""))
+        .filter(n => ISO_BK.test(n)).sort();
+      _lastBackup = names.length ? names[names.length - 1] : "";
+    }
+  }catch(e){ return; }
+  finally{ _bkLooking = false; }
+  paintBackupStamp();
+}
+
 /* §8: backups are dated snapshots inside the data repo; restore is a normal write. */
 async function createBackup(){
   if(DEMO || !ghReady() || isOffline()){ toast("Backups need the GitHub connection"); return; }
@@ -996,6 +1032,8 @@ async function createBackup(){
     const body = { message:"backup", content: b64enc(JSON.stringify(S)) };
     const res = await fetch(ghUrl(name), { method:"PUT", headers: ghHeaders(), body: JSON.stringify(body) });
     if(!res.ok) throw new Error(await ghErr(res));
+    _lastBackup = name.replace("backups/","").replace(".json","");
+    paintBackupStamp();                      // never render() here: it would wipe unsaved Settings input
     setDot("ok","live"); toast("Backup created");
   }catch(e){ lastSyncErr = e.message; setDot("err","error"); toast("Backup failed"); }
 }
@@ -1031,6 +1069,57 @@ async function reallyRestore(path){
     write(st => { for(const k of Object.keys(st)) delete st[k]; Object.assign(st, snap); }, "restore backup")
       .then(ok => { if(ok) toast("Restored"); });
   }catch(e){ toast("Restore failed: " + e.message); }
+}
+
+/* v3.1 §2: clear logged data — clears the logged record, keeps the dictionary.
+   Recoverable by design: a backup is written first and shows up in Restore.
+   Nothing debt-related is cleared explicitly — debt, bank, plan and streak
+   live only inside ledger()/actLedger() and fall to zero once their input
+   is gone. */
+function clearDataSheet(){
+  const days = Object.keys(S.days).length;
+  const wCount = Object.values(S.days).filter(r => r && r.w).length;
+  const marks = (S.activityLogs || []).length;
+  const retired = (S.activities || []).filter(a => a.retiredFrom && a.retiredFrom <= dkey()).length;
+  sheet(`<h2>Clear logged data?</h2>
+    <div class="sub">Clears everything you logged. Everything you built stays.</div>
+    <div class="card" style="margin-top:12px">
+      <div class="wkrow"><span>Days logged</span><span class="num">${days}</span></div>
+      <div class="wkrow"><span>Weight entries</span><span class="num">${wCount}</span></div>
+      <div class="wkrow"><span>Activity check-marks</span><span class="num">${marks}</span></div>
+      ${retired ? `<div class="wkrow"><span>Retired activities</span><span class="num">${retired}</span></div>` : ""}
+    </div>
+    <div class="sub" style="margin-top:10px">Your foods, your activities and your settings are kept, and your streaks start again from today. A backup is saved first — restore it any time from this card.</div>`,
+    { modal:true, footer: `<button style="flex:1" onclick="closeSheet()">Cancel</button>
+      <button class="danger" style="flex:1" onclick="clearData()">Clear</button>` });
+}
+async function clearData(){
+  if(!DEMO && (!ghReady() || isOffline())){ toast("Clearing needs the GitHub connection"); return; }
+  closeSheet();
+  const today = dkey();
+  const clear = st => {
+    st.days = {};
+    st.activityLogs = [];
+    st.activities = (st.activities || []).filter(a => !a.retiredFrom || a.retiredFrom > today);
+    // creation-week grace (§2) then restarts every activity streak at 0 today
+    for(const a of st.activities) a.created = today;
+  };
+  if(DEMO){ write(clear, "clear logged data").then(ok => { if(ok) toast("Logged data cleared"); }); return; }
+  setDot("pending","saving");
+  try{
+    const { state } = await ghGetState();
+    if(state){
+      const name = "backups/" + new Date().toISOString().slice(0,19).replace(/:/g,"-") + ".json";
+      const body = { message:"backup before clearing", content: b64enc(JSON.stringify(state)) };
+      const res = await fetch(ghUrl(name), { method:"PUT", headers: ghHeaders(), body: JSON.stringify(body) });
+      if(!res.ok) throw new Error(await ghErr(res));
+      _lastBackup = name.replace("backups/","").replace(".json","");
+    }
+  }catch(e){
+    lastSyncErr = e.message; setDot("err","error");
+    toast("Backup failed — nothing was cleared"); return;      // abort: the repo is untouched
+  }
+  write(clear, "clear logged data").then(ok => { if(ok) toast("Cleared — backup saved"); });
 }
 
 /* ─────────────── Activity (v3.0 — see V3.0_PLAN.md) ───────────────
@@ -1388,6 +1477,7 @@ function render(){
   _L = null; _A = null;
   hideChip();
   $("#main").innerHTML = { today:renderToday, trends:renderTrends, foods:renderFoods, activity:renderActivity, settings:renderSettings }[view]();
+  if(view === "settings") findLastBackup();
 }
 go("today");
 fetchState();
