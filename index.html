@@ -205,7 +205,7 @@ button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:cen
 
 <script>
 "use strict";
-const APP_VERSION = "3.1";
+const APP_VERSION = "3.1.1";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -864,7 +864,11 @@ function chartCals(n){
 function renderTrends(){
   const wc = weeklyCloses();
   const w = weights(45); const first = w[0], last = w[w.length-1];
-  const delta = first && last && w.length>1 ? (ema(w)[w.length-1][1] - w[0][1]) : null;
+  // v3.1.1: raw latest vs raw earliest in the window — the KPI reports the
+  // change between two weights that were actually measured. No smoothing:
+  // mixing a smoothed endpoint with a raw start let one odd old reading skew
+  // the headline number until it aged out.
+  const delta = first && last && w.length>1 ? (last[1] - first[1]) : null;
   const bd = bankDisplay();
   let h = `<div class="kpis">
     <div class="kpi"><div class="l">45-day trend</div><div class="v" style="color:${delta<0?"var(--ok)":"var(--ink)"}">${delta===null?"–":(delta>0?"+":"")+delta.toFixed(1)+" kg"}</div></div>
@@ -1090,7 +1094,7 @@ function clearDataSheet(){
       ${retired ? `<div class="wkrow"><span>Retired activities</span><span class="num">${retired}</span></div>` : ""}
     </div>
     <div class="sub" style="margin-top:10px">Your foods, your activities and your settings are kept, and your streaks start again from today. A backup is saved first — restore it any time from this card.</div>`,
-    { modal:true, footer: `<button style="flex:1" onclick="closeSheet()">Cancel</button>
+    { footer: `<button style="flex:1" onclick="closeSheet()">Cancel</button>
       <button class="danger" style="flex:1" onclick="clearData()">Clear</button>` });
 }
 async function clearData(){
