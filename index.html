@@ -205,7 +205,7 @@ button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:cen
 
 <script>
 "use strict";
-const APP_VERSION = "3.2";
+const APP_VERSION = "3.2.1";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -821,7 +821,7 @@ function chartWeight(n){
   for(const [k] of all){ const r = S.days[k]; if(r && r.g !== undefined && r.g !== null) lastG = r.g; goalByK[k] = lastG; }
   const winGoals = pts.map(([k]) => goalByK[k]);
   const liveGoals = winGoals.filter(g => g);
-  const ys = pts.map(p=>p[1]).concat(liveGoals);
+  const ys = pts.map(p=>p[1]);            // v3.2.1: the scale follows the weights only
   let lo = Math.min(...ys), hi = Math.max(...ys); const pad = Math.max((hi-lo)*0.15, 0.4); lo-=pad; hi+=pad;
   const line = monotonePath(pts.map(([k,v]) => [X(k), Y(v)]));
   const lastK = pts[pts.length-1][0], cur = pts[pts.length-1][1];
@@ -842,14 +842,18 @@ function chartWeight(n){
       else path += `L${X(k).toFixed(1)} ${Y(prev).toFixed(1)}` + (g!==prev?` L${X(k).toFixed(1)} ${Y(g).toFixed(1)}`:"");
       prev = g; });
     path += `L${(W-P).toFixed(1)} ${Y(prev).toFixed(1)}`;
-    goalHidden = Math.abs(Y(prev) - Y(cur)) < 16; // collision: weight wins
-    goal = `<path d="${path}" fill="none" stroke="var(--gold)" stroke-dasharray="4 4" stroke-width="1"/>` +
-      (goalHidden ? "" : `<text x="${W-10}" y="${(Y(prev)-4).toFixed(1)}" text-anchor="end" fill="var(--gold)">goal ${prev}</text>`);
+    // v3.2.1: a goal outside the weights' range is off-chart — its line is
+    // clipped to the plot and its number pins to the edge it lies beyond
+    const labelY = prev < lo ? H-20 : prev > hi ? 22 : Y(prev)-4;
+    goalHidden = Math.abs(labelY + 4 - Y(cur)) < 16; // collision: weight wins
+    goal = `<path d="${path}" clip-path="url(#wplot)" fill="none" stroke="var(--gold)" stroke-dasharray="4 4" stroke-width="1"/>` +
+      (goalHidden ? "" : `<text x="${W-10}" y="${labelY.toFixed(1)}" text-anchor="end" fill="var(--gold)">goal ${prev}</text>`);
   }
   const chipFor = (k,w) => `showChip(event,'${new Date(k+"T12:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"})} · ${w}')`;
   // current-weight numeral rides its dot, not the chart edge
   const curX = Math.min(Math.max(X(lastK), P+18), W-18);
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">
+    <defs><clipPath id="wplot"><rect x="${P}" y="0" width="${W-2*P}" height="${H-16}"/></clipPath></defs>
     ${ruler}
     <line x1="${P}" x2="${W-P}" y1="${H-16}" y2="${H-16}" stroke="var(--border)" />
     ${goal}
