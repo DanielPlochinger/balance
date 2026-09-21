@@ -205,7 +205,7 @@ button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:cen
 
 <script>
 "use strict";
-const APP_VERSION = "3.2.1";
+const APP_VERSION = "3.3";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -227,7 +227,7 @@ function seed(){
   if(DEMO) demoSeed(s);
   return s;
 }
-function cache(){ localStorage.setItem(LSKEY, JSON.stringify(S)); _L = null; }
+function cache(){ localStorage.setItem(LSKEY, JSON.stringify(S)); _L = null; _W = null; }
 function saveSec(){ localStorage.setItem(SECKEY, JSON.stringify(SEC)); }
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function dkey(d){ const x = d||new Date(); return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"); }
@@ -335,6 +335,25 @@ function streak(){
     else break;
   }
   return n;
+}
+// v3.3 §2.1: the weigh-in frame anchor — the most recent Sunday STRICTLY
+// before today, derived from the Monday week so the two can never drift.
+// weekStart() (Monday) remains the app's definition of a week; this is only
+// the boundary that measures one.
+function frameStart(){ return addDaysK(weekStart(dkey()), -1); }
+// v3.3 §7: every weigh-in, sorted. No fixed lookback — a carried opener must
+// survive an arbitrarily long gap.
+let _W = null;
+function weighKeys(){ return _W || (_W = Object.keys(S.days).filter(k => S.days[k] && S.days[k].w).sort()); }
+// the last weigh-in on or before k, as [key, kg], or null
+function weightAt(k){ const ks = weighKeys(); let out = null;
+  for(const d of ks){ if(d > k) break; out = [d, S.days[d].w]; } return out; }
+// ISO 8601 week number: the week containing the year's first Thursday.
+function isoWeek(k){
+  const d = new Date(k+"T12:00");
+  const t = new Date(d); t.setDate(t.getDate() + 3 - ((d.getDay()+6)%7));
+  const w1 = new Date(t.getFullYear(), 0, 4);
+  return 1 + Math.round(((t - w1)/86400000 - 3 + ((w1.getDay()+6)%7)) / 7);
 }
 function weekStart(k){ const d = new Date(k+"T12:00"); const wd = (d.getDay()+6)%7; d.setDate(d.getDate()-wd); return dkey(d); }
 // §16: weekly closes are physiological — vs snapshotted maintenance, never budget/trims.
@@ -610,8 +629,9 @@ function renderToday(){
     <div class="row" style="gap:18px;align-items:center">
       ${ringSVG(c/T, over)}
       <div style="flex:1;min-width:0">
-        <div class="heronum2 ${over?"neg":""}">${Math.abs(Math.round(left)).toLocaleString()}</div>
-        <div class="sub num">${over?"kcal over":"kcal left"} · ${Math.round(c).toLocaleString()} of ${Math.round(T).toLocaleString()}</div>
+        <div class="heronum2 ${over?"neg":""}">${Math.round(c).toLocaleString()}</div>
+        <div class="sub num">${over ? `${Math.abs(Math.round(left)).toLocaleString()} kcal over ${Math.round(T).toLocaleString()}`
+                                    : `${Math.round(left).toLocaleString()} kcal left of ${Math.round(T).toLocaleString()}`}</div>
         ${trim ? `<div class="sub num" style="font-size:11.5px;margin-top:3px">${T.toLocaleString()} = ${B.toLocaleString()} budget − ${trim.toLocaleString()} repayment</div>` : ""}
       </div>
     </div>
@@ -704,7 +724,9 @@ function lastWeight(){ const w = weights(90); return w.length ? w[w.length-1][1]
 function saveWeight(){
   const v = parseFloat($("#win").value); if(!v) return;
   const k = dkey(), w = Math.round(v*10)/10;
-  write(st => { const r = st.days[k] = st.days[k] || { e:[], u:0 }; r.w = w; r.u = Date.now(); }, "weight")
+  // v3.3 §4: the weekly goal is locked at the moment of the weigh-in
+  write(st => { const r = st.days[k] = st.days[k] || { e:[], u:0 };
+    r.w = w; r.wg = st.config.weekGoal || 0; r.u = Date.now(); }, "weight")
     .then(ok => { if(ok) toast("Weight saved: " + w + " kg"); });
 }
 function quickLog(id){ const f = findFood(id); if(!f) return;
@@ -801,115 +823,156 @@ function manualLog(){
 }
 
 /* ───────────────────────── Trends ───────────────────────── */
-function chartWeight(n){
-  // v3.0.1: fixed last-n-days date axis with chartCals' exact x-metrics so
-  // the two charts align date-for-date. v3.2: the line is a monotone curve
-  // through the measured dots in the window — no smoothing. Only the goal
-  // walk still reads 90 days, so the goal entering the window is correct.
-  const all = weights(90);
-  const d0 = new Date(); d0.setDate(d0.getDate()-n+1);
-  const startK = dkey(d0);
-  const pts = all.filter(([k]) => k >= startK);
-  if(pts.length < 2) return `<div class="sub">Log your weight a few mornings and the trend appears here.</div>`;
+function chartWeight(startK, n){
+  // v3.3 §2.3: a fixed Sunday→Sunday frame. Dots are the weigh-ins inside it;
+  // the opening Sunday always carries a point so the week has an end. Curve
+  // input reaches back before the frame and is rendered clipped, so the line
+  // enters with direction and the chart is never blank once two weigh-ins
+  // exist anywhere in history. The y-scale still follows the weights only.
+  const today = dkey(), endK = addDaysK(startK, n-1);
   const W = 340, H = 200, P = 6, band = (W-2*P)/n;
   const X = k => P + (daysBetween(startK, k) + 0.5) * band;
-  const Y = v => H-16 - (v-lo)*(H-28)/(hi-lo);
-  // §13: stepped goal from per-day snapshots, walked over the full history
-  // so the value entering the window is the historic snapshot.
-  let lastG = cfg().goal ?? null;
-  const goalByK = {};
-  for(const [k] of all){ const r = S.days[k]; if(r && r.g !== undefined && r.g !== null) lastG = r.g; goalByK[k] = lastG; }
-  const winGoals = pts.map(([k]) => goalByK[k]);
-  const liveGoals = winGoals.filter(g => g);
-  const ys = pts.map(p=>p[1]);            // v3.2.1: the scale follows the weights only
+  const inFrame = [];                                  // [key, kg, carriedFrom|false]
+  for(let i=0;i<n;i++){ const k = addDaysK(startK, i), r = S.days[k];
+    if(k <= today && r && r.w) inFrame.push([k, r.w, false]); }
+  if(!inFrame.length || inFrame[0][0] !== startK){
+    const c = weightAt(startK);
+    if(c) inFrame.unshift([startK, c[1], c[0] === startK ? false : c[0]]);
+  }
+  // the last weigh-in BEFORE the frame: horizontally clipped away, but it gives
+  // the line a direction as it enters the left edge and keeps the chart alive
+  // on a Monday. It counts toward the y-scale, or the entering line would be
+  // clipped off the top and read as broken.
+  const lead = weightAt(addDaysK(startK, -1));
+  const curve = (lead ? [[lead[0], lead[1]]] : []).concat(inFrame.map(p => [p[0], p[1]]));
+  if(curve.length < 2) return `<div class="sub">Log your weight a few mornings and the trend appears here.</div>`;
+  const ys = curve.map(p => p[1]);
   let lo = Math.min(...ys), hi = Math.max(...ys); const pad = Math.max((hi-lo)*0.15, 0.4); lo-=pad; hi+=pad;
-  const line = monotonePath(pts.map(([k,v]) => [X(k), Y(v)]));
-  const lastK = pts[pts.length-1][0], cur = pts[pts.length-1][1];
-  // ruler lives BEHIND the data: full-width faint lines, labels at the left
-  // edge, no reserved gutter (Daniel, 2026-08-23 — exact alignment wins)
+  const Y = v => H-16 - (v-lo)*(H-28)/(hi-lo);
+  // §13: stepped goal from per-day snapshots, walked over the full history so
+  // the value entering the frame is the historic snapshot.
+  const sorted = Object.keys(S.days).sort(); let si = 0, lastG = cfg().goal ?? null;
+  const goalByK = {};
+  for(let i=0;i<n;i++){ const k = addDaysK(startK, i);
+    while(si < sorted.length && sorted[si] <= k){ const r = S.days[sorted[si]]; if(r && r.g != null) lastG = r.g; si++; }
+    goalByK[k] = lastG; }
+  // ruler lives BEHIND the data: full-width faint lines, labels at the left edge
   const range = hi - lo;
-  const step = [0.5, 1, 2, 5, 10].find(s => range / s <= 6) || 10;
+  const step = [0.5, 1, 2, 5, 10].find(x => range / x <= 6) || 10;
   let ruler = "";
   for(let v = Math.ceil(lo/step)*step; v <= hi; v += step){
     ruler += `<line x1="${P}" x2="${W-P}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--border)" stroke-width="0.5"/>
       <text x="${P+2}" y="${(Y(v)-2.5).toFixed(1)}" font-size="8" fill="var(--tonal2)">${step<1?v.toFixed(1):Math.round(v)}</text>`;
   }
+  const lastK = inFrame[inFrame.length-1][0], cur = inFrame[inFrame.length-1][1];
   let goal = "", goalHidden = false;
-  if(liveGoals.length){
+  if(Object.values(goalByK).some(g => g)){
     let path = "", prev = null;
-    pts.forEach(([k],i)=>{ const g = winGoals[i]; if(!g) return;
-      if(prev === null) path += `M${X(k).toFixed(1)} ${Y(g).toFixed(1)}`;
-      else path += `L${X(k).toFixed(1)} ${Y(prev).toFixed(1)}` + (g!==prev?` L${X(k).toFixed(1)} ${Y(g).toFixed(1)}`:"");
-      prev = g; });
+    for(let i=0;i<n;i++){ const k = addDaysK(startK, i), g = goalByK[k]; if(!g) continue;
+      const x = X(k);
+      if(prev === null) path += `M${x.toFixed(1)} ${Y(g).toFixed(1)}`;
+      else { path += `L${x.toFixed(1)} ${Y(prev).toFixed(1)}`; if(g !== prev) path += ` L${x.toFixed(1)} ${Y(g).toFixed(1)}`; }
+      prev = g; }
     path += `L${(W-P).toFixed(1)} ${Y(prev).toFixed(1)}`;
-    // v3.2.1: a goal outside the weights' range is off-chart — its line is
-    // clipped to the plot and its number pins to the edge it lies beyond
+    // v3.2.1: an off-chart goal keeps its number pinned to the edge it lies beyond
     const labelY = prev < lo ? H-20 : prev > hi ? 22 : Y(prev)-4;
-    goalHidden = Math.abs(labelY + 4 - Y(cur)) < 16; // collision: weight wins
+    goalHidden = Math.abs(labelY + 4 - Y(cur)) < 16;   // collision: weight wins
     goal = `<path d="${path}" clip-path="url(#wplot)" fill="none" stroke="var(--gold)" stroke-dasharray="4 4" stroke-width="1"/>` +
       (goalHidden ? "" : `<text x="${W-10}" y="${labelY.toFixed(1)}" text-anchor="end" fill="var(--gold)">goal ${prev}</text>`);
   }
-  const chipFor = (k,w) => `showChip(event,'${new Date(k+"T12:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"})} · ${w}')`;
-  // current-weight numeral rides its dot, not the chart edge
+  const dateOf = k => new Date(k+"T12:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+  const line = monotonePath(curve.map(([k,v]) => [X(k), Y(v)]));
   const curX = Math.min(Math.max(X(lastK), P+18), W-18);
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">
     <defs><clipPath id="wplot"><rect x="${P}" y="0" width="${W-2*P}" height="${H-16}"/></clipPath></defs>
     ${ruler}
     <line x1="${P}" x2="${W-P}" y1="${H-16}" y2="${H-16}" stroke="var(--border)" />
     ${goal}
-    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
-    ${pts.map(p=>`<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="2.8" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.2" opacity="0.8"/>
-      <circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="11" fill="transparent" onclick="${chipFor(p[0], p[1])}"/>`).join("")}
+    <path d="${line}" clip-path="url(#wplot)" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
+    ${inFrame.map(([k,v,carried])=>`<circle cx="${X(k).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.8" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.2" opacity="${carried?0.3:0.8}"/>
+      <circle cx="${X(k).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="11" fill="transparent" onclick="showChip(event,'${carried?`carried from ${dateOf(carried)}`:dateOf(k)} · ${v}')"/>`).join("")}
     <text x="${curX.toFixed(1)}" y="${(Y(cur)-9).toFixed(1)}" text-anchor="middle" font-size="11" fill="var(--ink)" font-weight="700" class="num">${cur}</text>
   </svg>`;
 }
-function chartCals(n){
+function chartCals(startK, n){
+  // v3.3 §2.2: same frame and metrics as the weight chart above, so the two
+  // align date-for-date. The opening Sunday's bar belongs to the previous week
+  // and is drawn normally; days that have not happened simply have no bar.
   const L = ledger(), today = dkey();
-  const days = []; const d = new Date(); d.setDate(d.getDate()-n+1);
-  for(let i=0;i<n;i++){ const k = dkey(d); days.push([k, S.days[k]]); d.setDate(d.getDate()+1); }
-  const W = 340, H = 130, P = 6, bw = (W-2*P)/n - 3;
+  const days = []; for(let i=0;i<n;i++){ const k = addDaysK(startK, i); days.push([k, S.days[k]]); }
+  const W = 340, H = 130, P = 6, band = (W-2*P)/n, bw = band - 3;
   // §13: per-day snapshotted budgets, carried forward across untracked gaps.
   let lastB = cfg().budget;
   const budgets = days.map(([k,r])=>{ if(k === today) return cfg().budget; if(r && r.b) lastB = r.b; return lastB; });
   const maxV = Math.max(...budgets.map(b=>b*1.3), ...days.map(([k,r])=>r?consumed(r):0));
   const Y = v => H-18 - v*(H-34)/maxV;
-  const X = i => P + i*((W-2*P)/n);
+  const X = i => P + i*band;
   let bars = "";
   days.forEach(([k,r],i)=>{
     if(!tracked(r)) return;
     const c = consumed(r);
     const t = (k === today ? cfg().budget - L.todayTrim : budgets[i] - (L.trims[k]||0));
     const col = c > t ? "var(--over)" : "var(--accent)";
-    const cSafe = Math.max(c, 0);
-    const h = Math.max(H-18-Y(cSafe), 2);
+    const h = Math.max(H-18-Y(Math.max(c, 0)), 2);
     bars += `<rect x="${X(i).toFixed(1)}" y="${(H-18-h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2.5" fill="${col}" onclick="event.stopPropagation();daySheet('${k}')"/>`;
   });
   // stepped budget line
   let bpath = `M${P} ${Y(budgets[0]).toFixed(1)}`;
   for(let i=1;i<n;i++){ bpath += `L${X(i).toFixed(1)} ${Y(budgets[i-1]).toFixed(1)}` + (budgets[i]!==budgets[i-1]?` L${X(i).toFixed(1)} ${Y(budgets[i]).toFixed(1)}`:""); }
   bpath += `L${W-P} ${Y(budgets[n-1]).toFixed(1)}`;
+  const WD = ["S","M","T","W","T","F","S","S"];
+  const labels = days.map(([k],i)=>`<text x="${(X(i)+bw/2).toFixed(1)}" y="${H-4}" text-anchor="middle"${k===today?' font-weight="700" fill="var(--ink)"':""}>${WD[i] || ""}</text>`).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">
     <path d="${bpath}" fill="none" stroke="var(--muted)" stroke-dasharray="3 4" stroke-width="1"/>
     <text x="${W-P}" y="${Y(budgets[n-1])-4}" text-anchor="end">budget ${budgets[n-1]}</text>
     ${bars}<line x1="${P}" x2="${W-P}" y1="${H-18}" y2="${H-18}" stroke="var(--border)"/>
-    <text x="${P}" y="${H-4}">${days[0][0].slice(5)}</text><text x="${W-P}" y="${H-4}" text-anchor="end">today</text>
+    ${labels}
   </svg>`;
+}
+// v3.3 §3: one row per calendar week, newest first, the in-progress week on
+// top. Delta = the week's closing Sunday weight minus the Sunday before it
+// began, each carried from the last weigh-in on or before that day — so the
+// weeks tile with no gaps and the deltas sum to the total change. The verdict
+// comes from the goal stamped on the last weigh-in INSIDE the week; a carried
+// value may never supply it (§4), so an unmeasured week stays neutral.
+function weeklyWeight(count){
+  const today = dkey(), rows = [];
+  for(let i=0;i<count;i++){
+    const mon = addDaysK(weekStart(today), -7*i);
+    const sunEnd = addDaysK(mon, 6), endK = i === 0 ? today : sunEnd;
+    const a = weightAt(addDaysK(mon, -1)), b = weightAt(endK);
+    if(!a || !b) continue;
+    let inWeek = null;
+    for(const k of weighKeys()){ if(k >= mon && k <= endK) inWeek = k; }
+    rows.push({ mon, sunEnd, delta: b[1] - a[1],
+                goal: i === 0 || !inWeek ? 0 : (S.days[inWeek].wg || 0) });
+  }
+  return rows;
+}
+function weekRange(a, b){
+  const f = (k, o) => new Date(k+"T12:00").toLocaleDateString("en-GB", o);
+  const sameMonth = f(a,{month:"short"}) === f(b,{month:"short"});
+  return f(a, sameMonth ? {day:"numeric"} : {day:"numeric",month:"short"}) + "–" + f(b,{day:"numeric",month:"short"});
 }
 function renderTrends(){
   const wc = weeklyCloses();
-  const w = weights(45); const first = w[0], last = w[w.length-1];
-  // v3.1.1: raw latest vs raw earliest in the window — the KPI reports the
-  // change between two weights that were actually measured. No smoothing:
-  // mixing a smoothed endpoint with a raw start let one odd old reading skew
-  // the headline number until it aged out.
-  const delta = first && last && w.length>1 ? (last[1] - first[1]) : null;
+  // v3.3 §2.4: the week's change so far — both ends measured (carried from the
+  // last real weigh-in on or before that day), never smoothed.
+  const fs = frameStart(), w0 = weightAt(fs), wNow = weightAt(dkey());
+  const delta = w0 && wNow ? wNow[1] - w0[1] : null;
   const bd = bankDisplay();
   let h = `<div class="kpis">
-    <div class="kpi"><div class="l">45-day trend</div><div class="v" style="color:${delta<0?"var(--ok)":"var(--ink)"}">${delta===null?"–":(delta>0?"+":"")+delta.toFixed(1)+" kg"}</div></div>
+    <div class="kpi"><div class="l">This week</div><div class="v">${delta===null?"–":(delta>0?"+":delta<0?"−":"")+Math.abs(delta).toFixed(1)+" kg"}</div></div>
     <div class="kpi" onclick="bankSheet()" style="cursor:pointer"><div class="l">Calorie bank</div><div class="v" style="color:${bd.col}">${bd.v}</div></div>
   </div>`;
-  h += `<div class="card"><h3>Weight</h3>${chartWeight(14)}</div>`;
-  h += `<div class="card"><h3>Last 14 days vs target</h3>${chartCals(14)}</div>`;
+  h += `<div class="card"><h3>Weight</h3>${chartWeight(fs, 8)}</div>`;
+  h += `<div class="card"><h3>This week vs target</h3>${chartCals(fs, 8)}</div>`;
+  const ww = weeklyWeight(10);
+  h += `<div class="card"><h3>Weekly weight</h3>` + (ww.length ? ww.map(r => {
+    const col = r.goal > 0 ? ((-r.delta) + 1e-9 >= r.goal ? "var(--ok)" : "var(--over)") : "";
+    return `<div class="entry"><span><span class="t">${weekRange(r.mon, r.sunEnd)}</span><span class="n">Week ${isoWeek(r.mon)}</span></span>
+      <span><span class="k"${col?` style="color:${col}"`:""}>${r.delta>0?"+":r.delta<0?"−":""}${Math.abs(r.delta).toFixed(1)}</span> <span class="sub">kg</span></span></div>`;
+  }).join("") : `<div class="sub">Weigh in over a couple of weeks and your weekly results land here.</div>`) + `</div>`;
   h += `<div class="card"><h3>Weekly closes — vs maintenance</h3>`;
   h += wc.length ? wc.map(([wk,x])=>{
     const sign = x.net>=0 ? "−" : "+";
@@ -981,6 +1044,7 @@ function renderSettings(){
     <label>Daily calorie budget</label><input id="s-budget" type="number" inputmode="numeric" value="${c.budget}">
     <label>Maintenance — kcal/day your body burns</label><input id="s-maint" type="number" inputmode="numeric" value="${c.maintenance||2400}">
     <label>Goal weight (kg, optional)</label><input id="s-goal" type="number" inputmode="decimal" value="${c.goal||""}">
+    <label>Weekly loss goal (kg — 0 turns it off)</label><input id="s-wgoal" type="number" inputmode="decimal" step="0.1" value="${c.weekGoal ?? ""}">
   </div>
   <div class="card"><h3>Bank rules</h3>
     <label>Max deposit per day (kcal under budget that counts)</label><input id="s-cap" type="number" inputmode="numeric" value="${c.cap}">
@@ -1016,6 +1080,7 @@ function saveSettings(){
   const m = num($("#s-maint").value);  if(m !== undefined) patch.maintenance = Math.round(m);
   const cp = num($("#s-cap").value);   if(cp !== undefined) patch.cap = Math.round(cp);
   const g = $("#s-goal").value.trim(); if(g !== "") patch.goal = num(g) || null;
+  const wg = num($("#s-wgoal").value); if(wg !== undefined) patch.weekGoal = Math.max(0, wg);
   SEC.anthropic = $("#s-anthropic").value.replace(/\s/g,"");
   SEC.model = $("#s-model").value;
   SEC.github = $("#s-github").value.replace(/[^A-Za-z0-9_]/g,"");
@@ -1448,6 +1513,7 @@ function demoSeed(s){
     ["Chicken breast","100g",165,1],["Rye bread slice","item",83,0],["Orange juice","100ml",44,0]];
   s.foods = foods.map(([n,per,k,fav])=>({ i:uid(), n, per, k, fav:!!fav, u:Date.now() }));
   s.config.maintenance = 2400;
+  s.config.weekGoal = 0.5;
   // Engineered to exercise every §0 path: expired deposits (i14–i12), a FIFO
   // withdrawal (i11), red near-expiry deposits (i9, i8), a bank-covered feast
   // (i6), and a debt feast (i1) leaving an active [450, 300] plan today.
@@ -1476,7 +1542,18 @@ function demoSeed(s){
       e.push({ i:uid(), t:String(hh).padStart(2,"0")+":"+(j%2?"30":"00"), n:names[(i*3+j)%names.length], q:1, k:kk });
     }
     w += (kcal-2400)/7700 + Math.sin(i*2.1)*0.12;
-    s.days[k] = { e, w:Math.round(w*10)/10, u:Date.now(), b:2000, c:300, g:80, m:2400 };
+    s.days[k] = { e, w:Math.round(w*10)/10, wg:0.5, u:Date.now(), b:2000, c:300, g:80, m:2400 };
+  }
+  // v3.3: weight-only history so the weekly list, its verdicts and the frame's
+  // carried opener are testable. Weight-only days are not tracked(), so they
+  // cannot disturb the engineered ledger story in the 17 days above.
+  let hw = 91.6;
+  for(let i=96;i>17;i--){
+    const k = addDaysK(dkey(), -i);
+    if(i >= 45 && i <= 51) continue;              // one week with no weigh-in at all
+    if(i % 3 === 0) continue;                     // sparse, not every morning
+    hw -= 0.085 + Math.sin(i*1.7)*0.07;
+    s.days[k] = { e:[], u:Date.now(), w:Math.round(hw*10)/10, wg:0.5 };
   }
   s.days[dkey()] = { e:[ { i:uid(), t:"08:10", n:"Cappuccino", q:2, k:180 },
                          { i:uid(), t:"08:12", n:"Oats with milk", q:1, k:420 },
@@ -1512,7 +1589,7 @@ async function demoParse(text){
 
 /* ───────────────────────── boot ───────────────────────── */
 function render(){
-  _L = null; _A = null;
+  _L = null; _A = null; _W = null;
   hideChip();
   $("#main").innerHTML = { today:renderToday, trends:renderTrends, foods:renderFoods, activity:renderActivity, settings:renderSettings }[view]();
   if(view === "settings") findLastBackup();
