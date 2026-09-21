@@ -193,8 +193,8 @@ button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:cen
 
 <nav>
   <button id="tab-today" onclick="go('today')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Today</button>
-  <button id="tab-activity" onclick="go('activity')"><svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h5L11 21l8-10.5h-5L13 3z"/></svg>Activity</button>
   <button id="tab-trends" onclick="go('trends')"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Trends</button>
+  <button id="tab-activity" onclick="go('activity')"><svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h5L11 21l8-10.5h-5L13 3z"/></svg>Activity</button>
   <button id="tab-foods" onclick="go('foods')"><svg viewBox="0 0 24 24"><path d="M5 3v18M5 10c3 0 4-2 4-7M12 3v18M12 3c4 1 4 8 0 9"/><path d="M18 3c2 2 3 5 3 8s-1 4-3 4v6"/></svg>Foods</button>
   <button id="tab-settings" onclick="go('settings')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>Settings</button>
 </nav>
@@ -205,7 +205,7 @@ button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:cen
 
 <script>
 "use strict";
-const APP_VERSION = "3.3";
+const APP_VERSION = "3.3.1";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -372,6 +372,15 @@ function weeklyCloses(){
 // Passes through every point and never overshoots: a peak or trough gets a
 // flat tangent exactly at its dot, so the curve never draws a value that was
 // not measured. Two points = a straight segment.
+// v3.3.1: the weekday strip sits at the TOP of both charts, directly under the
+// card title, labelling the eight columns of the shared frame. Today is inked.
+function weekdayStrip(startK, n, P, band){
+  const WD = ["S","M","T","W","T","F","S","S"], today = dkey();
+  let out = "";
+  for(let i=0;i<n;i++){ const k = addDaysK(startK, i);
+    out += `<text x="${(P + (i+0.5)*band).toFixed(1)}" y="11" text-anchor="middle"${k===today?' font-weight="700" fill="var(--ink)"':""}>${WD[i] || ""}</text>`; }
+  return out;
+}
 function monotonePath(xy){
   const n = xy.length;
   if(n < 2) return "";
@@ -830,7 +839,8 @@ function chartWeight(startK, n){
   // enters with direction and the chart is never blank once two weigh-ins
   // exist anywhere in history. The y-scale still follows the weights only.
   const today = dkey(), endK = addDaysK(startK, n-1);
-  const W = 340, H = 200, P = 6, band = (W-2*P)/n;
+  const W = 340, H = 206, P = 6, band = (W-2*P)/n;
+  const TOP = 26, BASE = H - 8;                    // v3.3.1: weekday strip on top
   const X = k => P + (daysBetween(startK, k) + 0.5) * band;
   const inFrame = [];                                  // [key, kg, carriedFrom|false]
   for(let i=0;i<n;i++){ const k = addDaysK(startK, i), r = S.days[k];
@@ -848,7 +858,7 @@ function chartWeight(startK, n){
   if(curve.length < 2) return `<div class="sub">Log your weight a few mornings and the trend appears here.</div>`;
   const ys = curve.map(p => p[1]);
   let lo = Math.min(...ys), hi = Math.max(...ys); const pad = Math.max((hi-lo)*0.15, 0.4); lo-=pad; hi+=pad;
-  const Y = v => H-16 - (v-lo)*(H-28)/(hi-lo);
+  const Y = v => BASE - (v-lo)*(BASE-TOP)/(hi-lo);
   // §13: stepped goal from per-day snapshots, walked over the full history so
   // the value entering the frame is the historic snapshot.
   const sorted = Object.keys(S.days).sort(); let si = 0, lastG = cfg().goal ?? null;
@@ -875,7 +885,7 @@ function chartWeight(startK, n){
       prev = g; }
     path += `L${(W-P).toFixed(1)} ${Y(prev).toFixed(1)}`;
     // v3.2.1: an off-chart goal keeps its number pinned to the edge it lies beyond
-    const labelY = prev < lo ? H-20 : prev > hi ? 22 : Y(prev)-4;
+    const labelY = prev < lo ? BASE-4 : prev > hi ? TOP+6 : Y(prev)-4;
     goalHidden = Math.abs(labelY + 4 - Y(cur)) < 16;   // collision: weight wins
     goal = `<path d="${path}" clip-path="url(#wplot)" fill="none" stroke="var(--gold)" stroke-dasharray="4 4" stroke-width="1"/>` +
       (goalHidden ? "" : `<text x="${W-10}" y="${labelY.toFixed(1)}" text-anchor="end" fill="var(--gold)">goal ${prev}</text>`);
@@ -884,9 +894,10 @@ function chartWeight(startK, n){
   const line = monotonePath(curve.map(([k,v]) => [X(k), Y(v)]));
   const curX = Math.min(Math.max(X(lastK), P+18), W-18);
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">
-    <defs><clipPath id="wplot"><rect x="${P}" y="0" width="${W-2*P}" height="${H-16}"/></clipPath></defs>
+    <defs><clipPath id="wplot"><rect x="${P}" y="${TOP-12}" width="${W-2*P}" height="${BASE-TOP+12}"/></clipPath></defs>
+    ${weekdayStrip(startK, n, P, band)}
     ${ruler}
-    <line x1="${P}" x2="${W-P}" y1="${H-16}" y2="${H-16}" stroke="var(--border)" />
+    <line x1="${P}" x2="${W-P}" y1="${BASE}" y2="${BASE}" stroke="var(--border)" />
     ${goal}
     <path d="${line}" clip-path="url(#wplot)" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
     ${inFrame.map(([k,v,carried])=>`<circle cx="${X(k).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.8" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.2" opacity="${carried?0.3:0.8}"/>
@@ -900,12 +911,13 @@ function chartCals(startK, n){
   // and is drawn normally; days that have not happened simply have no bar.
   const L = ledger(), today = dkey();
   const days = []; for(let i=0;i<n;i++){ const k = addDaysK(startK, i); days.push([k, S.days[k]]); }
-  const W = 340, H = 130, P = 6, band = (W-2*P)/n, bw = band - 3;
+  const W = 340, H = 134, P = 6, band = (W-2*P)/n, bw = band - 3;
+  const TOP = 18, BASE = H - 6;                    // v3.3.1: weekday strip on top
   // §13: per-day snapshotted budgets, carried forward across untracked gaps.
   let lastB = cfg().budget;
   const budgets = days.map(([k,r])=>{ if(k === today) return cfg().budget; if(r && r.b) lastB = r.b; return lastB; });
   const maxV = Math.max(...budgets.map(b=>b*1.3), ...days.map(([k,r])=>r?consumed(r):0));
-  const Y = v => H-18 - v*(H-34)/maxV;
+  const Y = v => BASE - v*(BASE-TOP)/maxV;
   const X = i => P + i*band;
   let bars = "";
   days.forEach(([k,r],i)=>{
@@ -913,20 +925,18 @@ function chartCals(startK, n){
     const c = consumed(r);
     const t = (k === today ? cfg().budget - L.todayTrim : budgets[i] - (L.trims[k]||0));
     const col = c > t ? "var(--over)" : "var(--accent)";
-    const h = Math.max(H-18-Y(Math.max(c, 0)), 2);
-    bars += `<rect x="${X(i).toFixed(1)}" y="${(H-18-h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2.5" fill="${col}" onclick="event.stopPropagation();daySheet('${k}')"/>`;
+    const h = Math.max(BASE-Y(Math.max(c, 0)), 2);
+    bars += `<rect x="${X(i).toFixed(1)}" y="${(BASE-h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2.5" fill="${col}" onclick="event.stopPropagation();daySheet('${k}')"/>`;
   });
   // stepped budget line
   let bpath = `M${P} ${Y(budgets[0]).toFixed(1)}`;
   for(let i=1;i<n;i++){ bpath += `L${X(i).toFixed(1)} ${Y(budgets[i-1]).toFixed(1)}` + (budgets[i]!==budgets[i-1]?` L${X(i).toFixed(1)} ${Y(budgets[i]).toFixed(1)}`:""); }
   bpath += `L${W-P} ${Y(budgets[n-1]).toFixed(1)}`;
-  const WD = ["S","M","T","W","T","F","S","S"];
-  const labels = days.map(([k],i)=>`<text x="${(X(i)+bw/2).toFixed(1)}" y="${H-4}" text-anchor="middle"${k===today?' font-weight="700" fill="var(--ink)"':""}>${WD[i] || ""}</text>`).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">
+    ${weekdayStrip(startK, n, P, band)}
     <path d="${bpath}" fill="none" stroke="var(--muted)" stroke-dasharray="3 4" stroke-width="1"/>
     <text x="${W-P}" y="${Y(budgets[n-1])-4}" text-anchor="end">budget ${budgets[n-1]}</text>
-    ${bars}<line x1="${P}" x2="${W-P}" y1="${H-18}" y2="${H-18}" stroke="var(--border)"/>
-    ${labels}
+    ${bars}<line x1="${P}" x2="${W-P}" y1="${BASE}" y2="${BASE}" stroke="var(--border)"/>
   </svg>`;
 }
 // v3.3 §3: one row per calendar week, newest first, the in-progress week on
@@ -966,11 +976,11 @@ function renderTrends(){
     <div class="kpi" onclick="bankSheet()" style="cursor:pointer"><div class="l">Calorie bank</div><div class="v" style="color:${bd.col}">${bd.v}</div></div>
   </div>`;
   h += `<div class="card"><h3>Weight</h3>${chartWeight(fs, 8)}</div>`;
-  h += `<div class="card"><h3>This week vs target</h3>${chartCals(fs, 8)}</div>`;
+  h += `<div class="card"><h3>Calories</h3>${chartCals(fs, 8)}</div>`;
   const ww = weeklyWeight(10);
-  h += `<div class="card"><h3>Weekly weight</h3>` + (ww.length ? ww.map(r => {
+  h += `<div class="card"><h3>Weight loss per week</h3>` + (ww.length ? ww.map(r => {
     const col = r.goal > 0 ? ((-r.delta) + 1e-9 >= r.goal ? "var(--ok)" : "var(--over)") : "";
-    return `<div class="entry"><span><span class="t">${weekRange(r.mon, r.sunEnd)}</span><span class="n">Week ${isoWeek(r.mon)}</span></span>
+    return `<div class="entry"><span><span class="n">Week ${isoWeek(r.mon)}</span><span class="t" style="margin:0 0 0 8px">${weekRange(r.mon, r.sunEnd)}</span></span>
       <span><span class="k"${col?` style="color:${col}"`:""}>${r.delta>0?"+":r.delta<0?"−":""}${Math.abs(r.delta).toFixed(1)}</span> <span class="sub">kg</span></span></div>`;
   }).join("") : `<div class="sub">Weigh in over a couple of weeks and your weekly results land here.</div>`) + `</div>`;
   h += `<div class="card"><h3>Weekly closes — vs maintenance</h3>`;
