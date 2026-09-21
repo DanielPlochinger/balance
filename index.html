@@ -205,7 +205,7 @@ button.actdone{flex:0 0 auto;display:flex;align-items:center;justify-content:cen
 
 <script>
 "use strict";
-const APP_VERSION = "3.3.2";
+const APP_VERSION = "3.3.3";
 /* ───────────────────────── state ───────────────────────── */
 const DEMO = location.search.includes("demo=1");
 const LSKEY = DEMO ? "balance:demo" : "balance:v1";
@@ -639,10 +639,10 @@ function renderToday(){
     <div class="row" style="gap:18px;align-items:center">
       ${ringSVG(c/T, over)}
       <div style="flex:1;min-width:0">
-        <div class="heronum2 ${over?"neg":""}">${Math.round(c).toLocaleString()}</div>
-        <div class="sub num">${over ? `${Math.abs(Math.round(left)).toLocaleString()} kcal over ${Math.round(T).toLocaleString()}`
-                                    : `${Math.round(left).toLocaleString()} kcal left of ${Math.round(T).toLocaleString()}`}</div>
-        ${trim ? `<div class="sub num" style="font-size:11.5px;margin-top:3px">${T.toLocaleString()} = ${B.toLocaleString()} budget − ${trim.toLocaleString()} repayment</div>` : ""}
+        <div class="heronum2 ${over?"neg":""}">${Math.round(c).toLocaleString()}<span class="sub num" style="margin-left:6px;font-weight:400">kcal</span></div>
+        <div class="sub num">${over ? `${Math.abs(Math.round(left)).toLocaleString()} over ${Math.round(T).toLocaleString()}`
+                                    : `${Math.round(left).toLocaleString()} left of ${Math.round(T).toLocaleString()}`}</div>
+        ${trim ? `<div class="sub num" style="font-size:11.5px;margin-top:3px">${T.toLocaleString()} = ${B.toLocaleString()} − ${trim.toLocaleString()} owed</div>` : ""}
       </div>
     </div>
   </div>`;
@@ -858,7 +858,10 @@ function chartWeight(startK, n){
   const curve = (lead ? [[lead[0], lead[1]]] : []).concat(inFrame.map(p => [p[0], p[1]]));
   if(curve.length < 2) return `<div class="sub">Log your weight a few mornings and the trend appears here.</div>`;
   const ys = curve.map(p => p[1]);
-  let lo = Math.min(...ys), hi = Math.max(...ys); const pad = Math.max((hi-lo)*0.15, 0.4); lo-=pad; hi+=pad;
+  // v3.3.3: a week's movement is small, so the floor under the padding has to
+  // be small too — 0.4 kg each side (sized for the old 14-day chart) left the
+  // dots using a third of the height and the week looking flat.
+  let lo = Math.min(...ys), hi = Math.max(...ys); const pad = Math.max((hi-lo)*0.15, 0.12); lo-=pad; hi+=pad;
   const Y = v => BASE - (v-lo)*(BASE-TOP)/(hi-lo);
   // §13: stepped goal from per-day snapshots, walked over the full history so
   // the value entering the frame is the historic snapshot.
@@ -869,7 +872,7 @@ function chartWeight(startK, n){
     goalByK[k] = lastG; }
   // ruler lives BEHIND the data: full-width faint lines, labels at the left edge
   const range = hi - lo;
-  const step = [0.5, 1, 2, 5, 10].find(x => range / x <= 6) || 10;
+  const step = [0.1, 0.2, 0.5, 1, 2, 5, 10].find(x => range / x <= 6) || 10;
   let ruler = "";
   for(let v = Math.ceil(lo/step)*step; v <= hi; v += step){
     ruler += `<line x1="${P}" x2="${W-P}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--border)" stroke-width="0.5"/>
